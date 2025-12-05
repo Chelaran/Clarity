@@ -5,3 +5,14 @@
 backend/main
 backend/clarity
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
