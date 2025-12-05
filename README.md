@@ -1,1 +1,1 @@
-# fynance-system-ai
+# Clarity
