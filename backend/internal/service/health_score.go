@@ -2,6 +2,7 @@ package service
 
 import (
 	"clarity/internal/models"
+	"fmt"
 	"math"
 	"time"
 
@@ -53,9 +54,16 @@ type HealthComponents struct {
 }
 
 type ComponentScore struct {
-	Value float64 `json:"value"`
-	Score float64 `json:"score"`
-	Weight float64 `json:"weight"`
+	Value       float64          `json:"value"`
+	Score       float64          `json:"score"`
+	Weight      float64          `json:"weight"`
+	Details     *ComponentDetails `json:"details,omitempty"` // Детализация компонента
+}
+
+type ComponentDetails struct {
+	TotalAmount   float64 `json:"total_amount"`   // Общая сумма
+	Recommendation string `json:"recommendation"` // Рекомендация
+	HasMoreDetails bool   `json:"has_more_details"` // Есть ли подробная информация
 }
 
 func (s *HealthScoreService) Calculate(userID uint, month string) (*HealthScoreResult, error) {
@@ -150,21 +158,25 @@ func (s *HealthScoreService) Calculate(userID uint, month string) (*HealthScoreR
 				Value:  math.Round(savingsRate*100) / 100,
 				Score:  savingsRateScore,
 				Weight: 0.30,
+				Details: s.getIncomeDetails(userID, monthIncome, savingsRate, savingsRateScore),
 			},
 			EmergencyFund: ComponentScore{
 				Value:  emergencyFundMonths,
 				Score:  emergencyFundScore,
 				Weight: 0.25,
+				Details: s.getSavingsDetails(userID, totalBalance, emergencyFundMonths, emergencyFundScore),
 			},
 			SpendingStability: ComponentScore{
 				Value:  stabilityScore,
 				Score:  stabilityScore,
 				Weight: 0.25,
+				Details: s.getExpenseDetails(userID, monthExpense, monthTime, stabilityScore),
 			},
 			EssentialRatio: ComponentScore{
 				Value:  math.Round(essentialRatio*100) / 100,
 				Score:  essentialRatioScore,
 				Weight: 0.20,
+				Details: s.getEssentialRatioDetails(monthExpense, monthEssential, essentialRatio, essentialRatioScore),
 			},
 		},
 		Trend:    trend,
@@ -559,3 +571,348 @@ func (s *HealthScoreService) calculateBenchmarks(userID uint, monthTime time.Tim
 	}
 }
 
+// Детализация компонента: Доходы
+func (s *HealthScoreService) getIncomeDetails(userID uint, totalIncome, savingsRate, score float64) *ComponentDetails {
+	recommendation := ""
+	
+	if savingsRate < 10 {
+		recommendation = "Рекомендуется увеличить накопления до 10% от дохода. Рассмотрите возможность сокращения необязательных расходов или увеличения доходов."
+	} else if savingsRate >= 20 {
+		recommendation = "Отличный уровень накоплений! Вы откладываете более 20% дохода, что является отличным показателем финансового здоровья."
+	} else if savingsRate >= 10 {
+		recommendation = "Хороший уровень накоплений. Для улучшения показателя попробуйте увеличить до 20%."
+	} else {
+		recommendation = "Уровень накоплений ниже рекомендуемого. Старайтесь откладывать минимум 10% от дохода."
+	}
+
+	return &ComponentDetails{
+		TotalAmount:    math.Round(totalIncome*100) / 100,
+		Recommendation: recommendation,
+		HasMoreDetails: true,
+	}
+}
+
+// Детализация компонента: Свободные средства (Emergency Fund)
+func (s *HealthScoreService) getSavingsDetails(userID uint, totalBalance, emergencyMonths, score float64) *ComponentDetails {
+	recommendation := ""
+	
+	if emergencyMonths < 3 {
+		recommendation = "Финансовая подушка критически мала. Рекомендуется накопить минимум 3 месяца расходов для финансовой безопасности."
+	} else if emergencyMonths >= 6 {
+		recommendation = "Отличная финансовая подушка! У вас достаточно средств на 6+ месяцев. Рассмотрите возможность инвестирования избыточных средств."
+	} else if emergencyMonths >= 3 {
+		recommendation = "Хорошая финансовая подушка. Для оптимального уровня рекомендуется накопить 6 месяцев расходов."
+	}
+
+	return &ComponentDetails{
+		TotalAmount:    math.Round(totalBalance*100) / 100,
+		Recommendation: recommendation,
+		HasMoreDetails: true,
+	}
+}
+
+// Детализация компонента: Расходы
+func (s *HealthScoreService) getExpenseDetails(userID uint, totalExpense float64, monthTime time.Time, stabilityScore float64) *ComponentDetails {
+	recommendation := ""
+	
+	if stabilityScore < 50 {
+		recommendation = "Расходы нестабильны. Старайтесь планировать бюджет для более равномерных трат. Это поможет лучше контролировать финансы."
+	} else if stabilityScore >= 75 {
+		recommendation = "Отличная стабильность расходов! Ваши траты предсказуемы, что является признаком хорошего финансового планирования."
+	} else {
+		recommendation = "Стабильность расходов в норме. Для улучшения показателя старайтесь планировать бюджет заранее."
+	}
+
+	return &ComponentDetails{
+		TotalAmount:    math.Round(totalExpense*100) / 100,
+		Recommendation: recommendation,
+		HasMoreDetails: true,
+	}
+}
+
+// Детализация компонента: Essential Ratio (баланс обязательных/необязательных)
+func (s *HealthScoreService) getEssentialRatioDetails(totalExpense, essentialExpense, essentialRatio, score float64) *ComponentDetails {
+	recommendation := ""
+	
+	if essentialRatio < 50 {
+		recommendation = "Слишком много необязательных расходов. Оптимально 50-60% обязательных трат. Рассмотрите возможность сокращения развлечений и необязательных покупок."
+	} else if essentialRatio > 80 {
+		recommendation = "Слишком много обязательных расходов. Рассмотрите оптимизацию: рефинансирование кредитов, пересмотр тарифов, поиск более выгодных предложений."
+	} else if essentialRatio >= 50 && essentialRatio <= 60 {
+		recommendation = "Отличный баланс обязательных и необязательных расходов! Вы находитесь в оптимальном диапазоне."
+	} else {
+		recommendation = "Баланс расходов близок к оптимальному. Старайтесь поддерживать соотношение 50-60% обязательных трат."
+	}
+
+	return &ComponentDetails{
+		TotalAmount:    math.Round(totalExpense*100) / 100,
+		Recommendation: recommendation,
+		HasMoreDetails: true,
+	}
+}
+
+
+// Детальные структуры для эндпоинтов
+type IncomeDetailsResponse struct {
+	TotalAmount   float64            `json:"total_amount"`
+	Recommendation string            `json:"recommendation"`
+	Breakdown     []CategoryBreakdown `json:"breakdown"`
+}
+
+type ExpenseDetailsResponse struct {
+	TotalAmount   float64            `json:"total_amount"`
+	Essential     float64            `json:"essential"`
+	NonEssential  float64            `json:"non_essential"`
+	Recommendation string            `json:"recommendation"`
+	Breakdown     []CategoryBreakdown `json:"breakdown"`
+}
+
+type SavingsDetailsResponse struct {
+	TotalBalance      float64 `json:"total_balance"`
+	EmergencyFundMonths float64 `json:"emergency_fund_months"`
+	Recommendation    string  `json:"recommendation"`
+}
+
+type EssentialRatioDetailsResponse struct {
+	TotalExpense    float64 `json:"total_expense"`
+	EssentialExpense float64 `json:"essential_expense"`
+	NonEssentialExpense float64 `json:"non_essential_expense"`
+	Ratio           float64 `json:"ratio"`
+	Recommendation  string  `json:"recommendation"`
+}
+
+type CategoryBreakdown struct {
+	Category string  `json:"category"`
+	Amount   float64 `json:"amount"`
+	Percent  float64 `json:"percent"`
+}
+
+// GetIncomeDetails - детальная информация о доходах
+func (s *HealthScoreService) GetIncomeDetails(userID uint, month string) (*IncomeDetailsResponse, error) {
+	monthTime, _ := time.Parse("2006-01", month)
+	startDate := month + "-01"
+	lastDay := monthTime.AddDate(0, 1, 0).AddDate(0, 0, -1)
+	endDate := lastDay.Format("2006-01-02")
+
+	var totalIncome float64
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'income' AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&totalIncome)
+
+	var breakdown []CategoryBreakdown
+	var categoryStats []struct {
+		Category string
+		Amount   float64
+	}
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'income' AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Select("category, COALESCE(SUM(amount), 0) as amount").
+		Group("category").
+		Scan(&categoryStats)
+
+	for _, stat := range categoryStats {
+		if stat.Category == "" {
+			stat.Category = "Без категории"
+		}
+		percent := 0.0
+		if totalIncome > 0 {
+			percent = (stat.Amount / totalIncome) * 100
+		}
+		breakdown = append(breakdown, CategoryBreakdown{
+			Category: stat.Category,
+			Amount:   math.Round(stat.Amount*100) / 100,
+			Percent:  math.Round(percent*100) / 100,
+		})
+	}
+
+	var totalExpense float64
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&totalExpense)
+
+	savingsRate := 0.0
+	if totalIncome > 0 {
+		savingsRate = ((totalIncome - totalExpense) / totalIncome) * 100
+	}
+
+	recommendation := ""
+	if savingsRate < 10 {
+		recommendation = "Ваш общий доход составляет " + formatMoney(totalIncome) + " рублей. Рекомендуется увеличить накопления до 10% от дохода."
+	} else if savingsRate >= 20 {
+		recommendation = "Ваш общий доход составляет " + formatMoney(totalIncome) + " рублей. Отличный уровень накоплений!"
+	} else {
+		recommendation = "Ваш общий доход составляет " + formatMoney(totalIncome) + " рублей. Хороший уровень накоплений."
+	}
+
+	return &IncomeDetailsResponse{
+		TotalAmount:    math.Round(totalIncome*100) / 100,
+		Recommendation: recommendation,
+		Breakdown:      breakdown,
+	}, nil
+}
+
+// GetExpenseDetails - детальная информация о расходах
+func (s *HealthScoreService) GetExpenseDetails(userID uint, month string) (*ExpenseDetailsResponse, error) {
+	monthTime, _ := time.Parse("2006-01", month)
+	startDate := month + "-01"
+	lastDay := monthTime.AddDate(0, 1, 0).AddDate(0, 0, -1)
+	endDate := lastDay.Format("2006-01-02")
+
+	var totalExpense, essentialExpense float64
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&totalExpense)
+
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'expense' AND is_essential = true AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&essentialExpense)
+
+	nonEssentialExpense := totalExpense - essentialExpense
+
+	var breakdown []CategoryBreakdown
+	var categoryStats []struct {
+		Category string
+		Amount   float64
+	}
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Select("category, COALESCE(SUM(amount), 0) as amount").
+		Group("category").
+		Scan(&categoryStats)
+
+	for _, stat := range categoryStats {
+		if stat.Category == "" {
+			stat.Category = "Без категории"
+		}
+		percent := 0.0
+		if totalExpense > 0 {
+			percent = (stat.Amount / totalExpense) * 100
+		}
+		breakdown = append(breakdown, CategoryBreakdown{
+			Category: stat.Category,
+			Amount:   math.Round(stat.Amount*100) / 100,
+			Percent:  math.Round(percent*100) / 100,
+		})
+	}
+
+	recommendation := "Ваши общие расходы составляют " + formatMoney(totalExpense) + " рублей. "
+	essentialRatio := 0.0
+	if totalExpense > 0 {
+		essentialRatio = (essentialExpense / totalExpense) * 100
+	}
+
+	if essentialRatio < 50 {
+		recommendation += "Слишком много необязательных расходов."
+	} else if essentialRatio > 80 {
+		recommendation += "Слишком много обязательных расходов."
+	} else {
+		recommendation += "Баланс расходов в норме."
+	}
+
+	return &ExpenseDetailsResponse{
+		TotalAmount:    math.Round(totalExpense*100) / 100,
+		Essential:      math.Round(essentialExpense*100) / 100,
+		NonEssential:   math.Round(nonEssentialExpense*100) / 100,
+		Recommendation: recommendation,
+		Breakdown:      breakdown,
+	}, nil
+}
+
+// GetSavingsDetails - детальная информация о накоплениях
+func (s *HealthScoreService) GetSavingsDetails(userID uint) (*SavingsDetailsResponse, error) {
+	var totalBalance float64
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ?", userID).
+		Select("COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0)").
+		Scan(&totalBalance)
+
+	threeMonthsAgo := time.Now().AddDate(0, -3, 0).Format("2006-01-02")
+	var totalExpense3Months float64
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'expense' AND date >= ?", userID, threeMonthsAgo).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&totalExpense3Months)
+	avgExpense := totalExpense3Months / 3.0
+
+	emergencyFundMonths := 0.0
+	if avgExpense > 0 {
+		emergencyFundMonths = totalBalance / avgExpense
+	}
+
+	recommendation := "Ваши свободные средства составляют " + formatMoney(totalBalance) + " рублей. "
+	if emergencyFundMonths < 3 {
+		recommendation += "Финансовая подушка критически мала."
+	} else if emergencyFundMonths >= 6 {
+		recommendation += "Отличная финансовая подушка!"
+	} else {
+		recommendation += "Хорошая финансовая подушка."
+	}
+
+	return &SavingsDetailsResponse{
+		TotalBalance:       math.Round(totalBalance*100) / 100,
+		EmergencyFundMonths: math.Round(emergencyFundMonths*100) / 100,
+		Recommendation:     recommendation,
+	}, nil
+}
+
+// GetEssentialRatioDetails - детальная информация о балансе обязательных/необязательных расходов
+func (s *HealthScoreService) GetEssentialRatioDetails(userID uint, month string) (*EssentialRatioDetailsResponse, error) {
+	monthTime, _ := time.Parse("2006-01", month)
+	startDate := month + "-01"
+	lastDay := monthTime.AddDate(0, 1, 0).AddDate(0, 0, -1)
+	endDate := lastDay.Format("2006-01-02")
+
+	var totalExpense, essentialExpense float64
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&totalExpense)
+
+	s.db.Model(&models.Transaction{}).
+		Where("user_id = ? AND type = 'expense' AND is_essential = true AND date >= ? AND date <= ?", userID, startDate, endDate).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&essentialExpense)
+
+	nonEssentialExpense := totalExpense - essentialExpense
+	ratio := 0.0
+	if totalExpense > 0 {
+		ratio = (essentialExpense / totalExpense) * 100
+	}
+
+	recommendation := ""
+	if ratio < 50 {
+		recommendation = "Слишком много необязательных расходов. Оптимально 50-60% обязательных трат."
+	} else if ratio > 80 {
+		recommendation = "Слишком много обязательных расходов. Рассмотрите оптимизацию."
+	} else {
+		recommendation = "Отличный баланс расходов!"
+	}
+
+	return &EssentialRatioDetailsResponse{
+		TotalExpense:        math.Round(totalExpense*100) / 100,
+		EssentialExpense:   math.Round(essentialExpense*100) / 100,
+		NonEssentialExpense: math.Round(nonEssentialExpense*100) / 100,
+		Ratio:              math.Round(ratio*100) / 100,
+		Recommendation:     recommendation,
+	}, nil
+}
+
+// Вспомогательные функции для форматирования
+func formatMoney(amount float64) string {
+	return fmt.Sprintf("%.2f", amount)
+}
+
+func formatMonths(months float64) string {
+	if months < 1 {
+		return fmt.Sprintf("%.1f месяца", months)
+	} else if months < 2 {
+		return "1 месяц"
+	} else if months < 5 {
+		return fmt.Sprintf("%.1f месяца", months)
+	}
+	return fmt.Sprintf("%.1f месяцев", months)
+}
