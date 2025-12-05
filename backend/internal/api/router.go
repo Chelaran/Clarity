@@ -1,20 +1,35 @@
 package api
 
 import (
-    "github.com/gin-gonic/gin"
-    "clarity/internal/repository"
+	"clarity/internal/api/handlers"
+	"clarity/internal/api/middleware"
+	"clarity/internal/repository"
+
+	"github.com/gin-gonic/gin"
 )
 
-// NewRouter creates and returns a gin Engine.
-// We accept the repo and logger as parameters for future handlers; logger is currently unused.
-func NewRouter(repo *repository.Repository, _ interface{}) *gin.Engine {
-    r := gin.Default()
+func NewRouter(repo *repository.Repository, jwtSecret string) *gin.Engine {
+	r := gin.Default()
 
-    // simple health endpoint
-    r.GET("/health", func(c *gin.Context) {
-        c.JSON(200, gin.H{"status": "ok"})
-    })
+	// Health check
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 
-    // placeholder: transactions endpoints can be added here later
-    return r
+	// Auth endpoints
+	authHandler := handlers.NewAuthHandler(repo, jwtSecret)
+	api := r.Group("/api")
+	{
+		api.POST("/register", authHandler.Register)
+		api.POST("/login", authHandler.Login)
+	}
+
+	// Protected routes
+	protected := api.Group("")
+	protected.Use(middleware.AuthMiddleware(jwtSecret))
+	{
+		// Transactions endpoints will be added here
+	}
+
+	return r
 }

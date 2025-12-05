@@ -1,0 +1,7 @@
+.env
+*.log
+
+# Binaries
+backend/main
+backend/clarity
+
