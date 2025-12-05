@@ -88,3 +88,29 @@ func (h *HealthScoreHandler) GetEssentialRatioDetails(c *gin.Context) {
 	c.JSON(http.StatusOK, details)
 }
 
+// GetInvestmentDetails - детальная информация об инвестициях
+func (h *HealthScoreHandler) GetInvestmentDetails(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	details, err := h.healthService.GetInvestmentDetails(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get investment details"})
+		return
+	}
+
+	c.JSON(http.StatusOK, details)
+}
+
+// GetDepositDetails - детальная информация о вкладах
+func (h *HealthScoreHandler) GetDepositDetails(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	details, err := h.healthService.GetDepositDetails(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get deposit details"})
+		return
+	}
+
+	c.JSON(http.StatusOK, details)
+}
+

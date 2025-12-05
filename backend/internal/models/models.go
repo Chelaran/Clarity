@@ -43,3 +43,28 @@ type Prediction struct {
 	Amount  float64 `json:"amount"`
 	Savings float64 `json:"savings"`
 }
+
+// Investment - инвестиции пользователя
+type Investment struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	UserID      uint      `gorm:"not null;index" json:"user_id"`
+	Amount      float64   `gorm:"not null" json:"amount"`      // Сумма инвестиции
+	Type        string    `json:"type"`                       // Тип: акции, облигации, крипта, фонды и т.д.
+	Description string    `json:"description"`                // Описание
+	CurrentValue float64  `json:"current_value"`               // Текущая стоимость (опционально)
+	Date        time.Time `gorm:"index" json:"date"`          // Дата покупки/вложения
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// Deposit - вклады пользователя
+type Deposit struct {
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	UserID      uint       `gorm:"not null;index" json:"user_id"`
+	Amount      float64    `gorm:"not null" json:"amount"`      // Сумма вклада
+	InterestRate float64   `json:"interest_rate"`                // Процентная ставка
+	Description string     `json:"description"`                  // Описание (название банка, тип вклада)
+	OpenDate    time.Time  `gorm:"index" json:"open_date"`      // Дата открытия
+	CloseDate   *time.Time `json:"close_date,omitempty"`         // Дата закрытия (если закрыт)
+	TermMonths  int        `json:"term_months"`                   // Срок в месяцах (0 = до востребования)
+	CreatedAt   time.Time  `json:"created_at"`
+}

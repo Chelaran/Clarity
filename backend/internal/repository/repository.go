@@ -20,7 +20,7 @@ func NewDB(dsn string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return db, db.AutoMigrate(&models.User{}, &models.Transaction{})
+	return db, db.AutoMigrate(&models.User{}, &models.Transaction{}, &models.Investment{}, &models.Deposit{})
 }
 
 func New(db *gorm.DB) *Repository {
@@ -86,4 +86,71 @@ func (r *Repository) GetUserByID(id uint) (*models.User, error) {
 		return nil, err
 	}
 	return &user, nil
+}
+
+// Investment CRUD
+func (r *Repository) CreateInvestment(inv *models.Investment) error {
+	return r.db.Create(inv).Error
+}
+
+func (r *Repository) GetInvestments(userID uint, limit, offset int) ([]models.Investment, error) {
+	var invs []models.Investment
+	err := r.db.Where("user_id = ?", userID).
+		Order("date desc").
+		Limit(limit).
+		Offset(offset).
+		Find(&invs).Error
+	return invs, err
+}
+
+func (r *Repository) GetInvestmentByID(id, userID uint) (*models.Investment, error) {
+	var inv models.Investment
+	err := r.db.Where("id = ? AND user_id = ?", id, userID).First(&inv).Error
+	if err != nil {
+		return nil, err
+	}
+	return &inv, nil
+}
+
+func (r *Repository) UpdateInvestment(inv *models.Investment) error {
+	return r.db.Save(inv).Error
+}
+
+func (r *Repository) DeleteInvestment(id, userID uint) error {
+	return r.db.Where("id = ? AND user_id = ?", id, userID).Delete(&models.Investment{}).Error
+}
+
+// Deposit CRUD
+func (r *Repository) CreateDeposit(dep *models.Deposit) error {
+	return r.db.Create(dep).Error
+}
+
+func (r *Repository) GetDeposits(userID uint, limit, offset int, activeOnly bool) ([]models.Deposit, error) {
+	var deps []models.Deposit
+	query := r.db.Where("user_id = ?", userID)
+	if activeOnly {
+		query = query.Where("close_date IS NULL")
+	}
+	err := query.Order("open_date desc").
+		Limit(limit).
+		Offset(offset).
+		Find(&deps).Error
+	return deps, err
+}
+
+func (r *Repository) GetDepositByID(id, userID uint) (*models.Deposit, error) {
+	var dep models.Deposit
+	err := r.db.Where("id = ? AND user_id = ?", id, userID).First(&dep).Error
+	if err != nil {
+		return nil, err
+	}
+	return &dep, nil
+}
+
+func (r *Repository) UpdateDeposit(dep *models.Deposit) error {
+	return r.db.Save(dep).Error
+}
+
+func (r *Repository) DeleteDeposit(id, userID uint) error {
+	return r.db.Where("id = ? AND user_id = ?", id, userID).Delete(&models.Deposit{}).Error
 }

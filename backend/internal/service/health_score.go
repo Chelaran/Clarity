@@ -688,6 +688,35 @@ type EssentialRatioDetailsResponse struct {
 	Recommendation  string  `json:"recommendation"`
 }
 
+type InvestmentDetailsResponse struct {
+	TotalAmount    float64 `json:"total_amount"`
+	CurrentValue   float64 `json:"current_value"`   // Текущая стоимость (если указана)
+	Profit         float64 `json:"profit"`           // Прибыль (current_value - total_amount)
+	ProfitPercent  float64 `json:"profit_percent"`   // Процент прибыли
+	Recommendation string  `json:"recommendation"`
+	Breakdown      []InvestmentBreakdown `json:"breakdown"`
+}
+
+type DepositDetailsResponse struct {
+	TotalAmount    float64 `json:"total_amount"`
+	TotalInterest  float64 `json:"total_interest"`  // Общий процентный доход
+	Recommendation string  `json:"recommendation"`
+	Breakdown      []DepositBreakdown `json:"breakdown"`
+}
+
+type InvestmentBreakdown struct {
+	Type   string  `json:"type"`
+	Amount float64 `json:"amount"`
+	Percent float64 `json:"percent"`
+}
+
+type DepositBreakdown struct {
+	Description string  `json:"description"`
+	Amount      float64 `json:"amount"`
+	InterestRate float64 `json:"interest_rate"`
+	Percent     float64 `json:"percent"`
+}
+
 type CategoryBreakdown struct {
 	Category string  `json:"category"`
 	Amount   float64 `json:"amount"`
@@ -935,4 +964,137 @@ func formatMonths(months float64) string {
 		return fmt.Sprintf("%.1f месяца", months)
 	}
 	return fmt.Sprintf("%.1f месяцев", months)
+}
+
+// GetInvestmentDetails - детальная информация об инвестициях
+func (s *HealthScoreService) GetInvestmentDetails(userID uint) (*InvestmentDetailsResponse, error) {
+	var totalAmount, currentValue float64
+	
+	// Сумма всех инвестиций
+	s.db.Model(&models.Investment{}).
+		Where("user_id = ?", userID).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&totalAmount)
+
+	// Текущая стоимость (если указана)
+	s.db.Model(&models.Investment{}).
+		Where("user_id = ? AND current_value > 0", userID).
+		Select("COALESCE(SUM(current_value), 0)").
+		Scan(&currentValue)
+
+	profit := currentValue - totalAmount
+	profitPercent := 0.0
+	if totalAmount > 0 {
+		profitPercent = (profit / totalAmount) * 100
+	}
+
+	// Разбивка по типам
+	var typeStats []struct {
+		Type   string
+		Amount float64
+	}
+	s.db.Model(&models.Investment{}).
+		Where("user_id = ?", userID).
+		Select("COALESCE(type, 'Не указано') as type, COALESCE(SUM(amount), 0) as amount").
+		Group("type").
+		Find(&typeStats)
+
+	breakdown := []InvestmentBreakdown{}
+	for _, stat := range typeStats {
+		percent := 0.0
+		if totalAmount > 0 {
+			percent = (stat.Amount / totalAmount) * 100
+		}
+		breakdown = append(breakdown, InvestmentBreakdown{
+			Type:   stat.Type,
+			Amount: math.Round(stat.Amount*100) / 100,
+			Percent: math.Round(percent*100) / 100,
+		})
+	}
+
+	recommendation := "Ваши общие инвестиции составляют " + formatMoney(totalAmount) + " рублей. "
+	if totalAmount == 0 {
+		recommendation += "Рекомендуется начать инвестировать для диверсификации портфеля и роста капитала."
+	} else if profitPercent > 0 {
+		recommendation += fmt.Sprintf("Отличная доходность! Ваша прибыль составляет %.2f%% (+%s рублей).", profitPercent, formatMoney(profit))
+	} else if profitPercent < 0 {
+		recommendation += fmt.Sprintf("Текущая стоимость ниже вложенной суммы (%.2f%%). Рекомендуется пересмотреть стратегию.", profitPercent)
+	} else {
+		recommendation += "Рассмотрите возможность увеличения инвестиций для долгосрочного роста."
+	}
+
+	return &InvestmentDetailsResponse{
+		TotalAmount:    math.Round(totalAmount*100) / 100,
+		CurrentValue:   math.Round(currentValue*100) / 100,
+		Profit:         math.Round(profit*100) / 100,
+		ProfitPercent: math.Round(profitPercent*100) / 100,
+		Recommendation: recommendation,
+		Breakdown:      breakdown,
+	}, nil
+}
+
+// GetDepositDetails - детальная информация о вкладах
+func (s *HealthScoreService) GetDepositDetails(userID uint) (*DepositDetailsResponse, error) {
+	var totalAmount float64
+	
+	// Сумма всех активных вкладов (не закрытых)
+	s.db.Model(&models.Deposit{}).
+		Where("user_id = ? AND close_date IS NULL", userID).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&totalAmount)
+
+	// Расчет процентного дохода (упрощенный: сумма * процент / 100)
+	var deposits []models.Deposit
+	s.db.Where("user_id = ? AND close_date IS NULL", userID).Find(&deposits)
+	
+	totalInterest := 0.0
+	for _, deposit := range deposits {
+		if deposit.InterestRate > 0 && deposit.TermMonths > 0 {
+			// Простой расчет: сумма * процент * срок в годах
+			years := float64(deposit.TermMonths) / 12.0
+			interest := deposit.Amount * (deposit.InterestRate / 100.0) * years
+			totalInterest += interest
+		}
+	}
+
+	// Разбивка по вкладам
+	var depositStats []models.Deposit
+	s.db.Where("user_id = ? AND close_date IS NULL", userID).
+		Order("amount desc").
+		Find(&depositStats)
+
+	breakdown := []DepositBreakdown{}
+	for _, deposit := range depositStats {
+		percent := 0.0
+		if totalAmount > 0 {
+			percent = (deposit.Amount / totalAmount) * 100
+		}
+		desc := deposit.Description
+		if desc == "" {
+			desc = "Вклад"
+		}
+		breakdown = append(breakdown, DepositBreakdown{
+			Description: desc,
+			Amount:      math.Round(deposit.Amount*100) / 100,
+			InterestRate: math.Round(deposit.InterestRate*100) / 100,
+			Percent:     math.Round(percent*100) / 100,
+		})
+	}
+
+	recommendation := "Ваши общие вклады составляют " + formatMoney(totalAmount) + " рублей. "
+	if totalAmount == 0 {
+		recommendation += "Рекомендуется открыть вклад для сохранения и приумножения средств с минимальным риском."
+	} else if totalInterest > 0 {
+		recommendation += fmt.Sprintf("Ожидаемый процентный доход: %s рублей. ", formatMoney(totalInterest))
+		recommendation += "Вклады - надежный способ сохранения капитала."
+	} else {
+		recommendation += "Рассмотрите вклады с более высокой процентной ставкой для увеличения дохода."
+	}
+
+	return &DepositDetailsResponse{
+		TotalAmount:    math.Round(totalAmount*100) / 100,
+		TotalInterest:  math.Round(totalInterest*100) / 100,
+		Recommendation: recommendation,
+		Breakdown:      breakdown,
+	}, nil
 }
