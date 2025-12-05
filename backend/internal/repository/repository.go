@@ -11,6 +11,10 @@ type Repository struct {
 	db *gorm.DB
 }
 
+func (r *Repository) DB() *gorm.DB {
+	return r.db
+}
+
 func NewDB(dsn string) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -27,12 +31,18 @@ func (r *Repository) CreateTransaction(t *models.Transaction) error {
 	return r.db.Create(t).Error
 }
 
-func (r *Repository) GetTransactions(userID uint, limit, offset int, month string) ([]models.Transaction, error) {
+func (r *Repository) GetTransactions(userID uint, limit, offset int, month, startDate, endDate string) ([]models.Transaction, error) {
 	var txs []models.Transaction
 	query := r.db.Where("user_id = ?", userID)
 	
 	if month != "" {
 		query = query.Where("DATE_TRUNC('month', date) = ?", month)
+	} else if startDate != "" && endDate != "" {
+		query = query.Where("date >= ? AND date <= ?", startDate, endDate)
+	} else if startDate != "" {
+		query = query.Where("date >= ?", startDate)
+	} else if endDate != "" {
+		query = query.Where("date <= ?", endDate)
 	}
 	
 	err := query.Order("date desc").Limit(limit).Offset(offset).Find(&txs).Error

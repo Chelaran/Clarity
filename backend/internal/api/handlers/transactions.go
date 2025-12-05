@@ -90,12 +90,14 @@ func (h *TransactionHandler) List(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	month := c.Query("month")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
 
 	if limit > 1000 {
 		limit = 1000
 	}
 
-	txs, err := h.repo.GetTransactions(userID, limit, offset, month)
+	txs, err := h.repo.GetTransactions(userID, limit, offset, month, startDate, endDate)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transactions"})
 		return

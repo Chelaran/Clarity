@@ -28,6 +28,7 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string) *gin
 	// Protected routes
 	mlClient := service.NewMLClient(mlServiceURL)
 	txHandler := handlers.NewTransactionHandler(repo, mlClient)
+	analyticsHandler := handlers.NewAnalyticsHandler(repo)
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware(jwtSecret))
 	{
@@ -35,6 +36,9 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string) *gin
 		protected.GET("/transactions", txHandler.List)
 		protected.PATCH("/transactions/:id", txHandler.Update)
 		protected.DELETE("/transactions/:id", txHandler.Delete)
+
+		protected.GET("/analytics/summary", analyticsHandler.Summary)
+		protected.GET("/analytics/trends", analyticsHandler.Trends)
 	}
 
 	return r
