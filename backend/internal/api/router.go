@@ -29,6 +29,7 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string) *gin
 	mlClient := service.NewMLClient(mlServiceURL)
 	txHandler := handlers.NewTransactionHandler(repo, mlClient)
 	analyticsHandler := handlers.NewAnalyticsHandler(repo)
+	healthScoreHandler := handlers.NewHealthScoreHandler(repo)
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware(jwtSecret))
 	{
@@ -39,6 +40,8 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string) *gin
 
 		protected.GET("/analytics/summary", analyticsHandler.Summary)
 		protected.GET("/analytics/trends", analyticsHandler.Trends)
+
+		protected.GET("/health-score", healthScoreHandler.GetHealthScore)
 	}
 
 	return r
