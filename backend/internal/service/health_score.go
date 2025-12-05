@@ -106,8 +106,8 @@ func (s *HealthScoreService) Calculate(userID uint, month string) (*HealthScoreR
 
 	// Делим на 3 месяца (или используем текущий месяц если нет данных)
 	avgExpense := totalExpense3Months / 3.0
-	if avgExpense == 0 {
-		avgExpense = monthExpense
+	if avgExpense == 0 && monthExpense > 0 {
+		avgExpense = monthExpense // Fallback на текущий месяц
 	}
 
 	// 1. Savings Rate (30%)
@@ -207,7 +207,7 @@ func (s *HealthScoreService) calculateSpendingStability(userID uint, monthTime t
 	}
 
 	if len(expenses) < 2 {
-		return 50.0
+		return 50.0 // Недостаточно данных для расчета стабильности
 	}
 
 	// 1. Вычисляем статистики (среднее, стандартное отклонение)
@@ -230,10 +230,12 @@ func (s *HealthScoreService) calculateSpendingStability(userID uint, monthTime t
 
 	// 2. Z-score для детекции аномалий (выбросов)
 	anomalyCount := 0
-	for _, v := range expenses {
-		zScore := math.Abs((v - mean) / stdDev)
-		if zScore > 2.0 { // Стандартное отклонение > 2σ считается аномалией
-			anomalyCount++
+	if stdDev > 0 { // Защита от деления на ноль
+		for _, v := range expenses {
+			zScore := math.Abs((v - mean) / stdDev)
+			if zScore > 2.0 { // Стандартное отклонение > 2σ считается аномалией
+				anomalyCount++
+			}
 		}
 	}
 	anomalyPenalty := float64(anomalyCount) / float64(len(expenses)) * 30.0 // Штраф до 30 points
@@ -413,7 +415,12 @@ func (s *HealthScoreService) analyzeTrend(userID uint, monthTime time.Time, curr
 		ssTotal += math.Pow(y-meanY, 2)
 		ssResidual += math.Pow(y-predicted, 2)
 	}
-	rSquared := 1.0 - (ssResidual / ssTotal)
+	
+	// Защита от деления на ноль
+	rSquared := 0.0
+	if ssTotal > 0.001 {
+		rSquared = 1.0 - (ssResidual / ssTotal)
+	}
 	confidence := math.Max(0, math.Min(100, rSquared*100))
 
 	direction := "stable"
@@ -830,13 +837,24 @@ func (s *HealthScoreService) GetSavingsDetails(userID uint) (*SavingsDetailsResp
 		Select("COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0)").
 		Scan(&totalBalance)
 
-	threeMonthsAgo := time.Now().AddDate(0, -3, 0).Format("2006-01-02")
-	var totalExpense3Months float64
+	// Получаем все расходы (используем как средние расходы за месяц)
+	var totalExpense float64
 	s.db.Model(&models.Transaction{}).
-		Where("user_id = ? AND type = 'expense' AND date >= ?", userID, threeMonthsAgo).
+		Where("user_id = ? AND type = 'expense'", userID).
 		Select("COALESCE(SUM(amount), 0)").
-		Scan(&totalExpense3Months)
-	avgExpense := totalExpense3Months / 3.0
+		Scan(&totalExpense)
+
+	// Если есть расходы, используем их как средние расходы за месяц
+	// (для более точного расчета можно было бы считать по месяцам, но для MVP это достаточно)
+	monthCount := 1
+	if totalExpense == 0 {
+		monthCount = 0
+	}
+
+	avgExpense := 0.0
+	if monthCount > 0 {
+		avgExpense = totalExpense / float64(monthCount)
+	}
 
 	emergencyFundMonths := 0.0
 	if avgExpense > 0 {
@@ -844,12 +862,14 @@ func (s *HealthScoreService) GetSavingsDetails(userID uint) (*SavingsDetailsResp
 	}
 
 	recommendation := "Ваши свободные средства составляют " + formatMoney(totalBalance) + " рублей. "
-	if emergencyFundMonths < 3 {
-		recommendation += "Финансовая подушка критически мала."
+	if avgExpense == 0 {
+		recommendation += "Недостаточно данных для расчета финансовой подушки. Добавьте информацию о расходах."
+	} else if emergencyFundMonths < 3 {
+		recommendation += "Финансовая подушка критически мала. Рекомендуется накопить минимум 3 месяца расходов (примерно " + formatMoney(avgExpense*3) + " рублей)."
 	} else if emergencyFundMonths >= 6 {
-		recommendation += "Отличная финансовая подушка!"
+		recommendation += "Отличная финансовая подушка! У вас достаточно средств на " + formatMonths(emergencyFundMonths) + "."
 	} else {
-		recommendation += "Хорошая финансовая подушка."
+		recommendation += "Хорошая финансовая подушка. У вас достаточно средств на " + formatMonths(emergencyFundMonths) + ". Для оптимального уровня рекомендуется накопить 6 месяцев расходов."
 	}
 
 	return &SavingsDetailsResponse{
