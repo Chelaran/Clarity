@@ -4,11 +4,12 @@ import (
 	"clarity/internal/api/handlers"
 	"clarity/internal/api/middleware"
 	"clarity/internal/repository"
+	"clarity/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(repo *repository.Repository, jwtSecret string) *gin.Engine {
+func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string) *gin.Engine {
 	r := gin.Default()
 
 	// Health check
@@ -25,10 +26,15 @@ func NewRouter(repo *repository.Repository, jwtSecret string) *gin.Engine {
 	}
 
 	// Protected routes
+	mlClient := service.NewMLClient(mlServiceURL)
+	txHandler := handlers.NewTransactionHandler(repo, mlClient)
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware(jwtSecret))
 	{
-		// Transactions endpoints will be added here
+		protected.POST("/transactions", txHandler.Create)
+		protected.GET("/transactions", txHandler.List)
+		protected.PATCH("/transactions/:id", txHandler.Update)
+		protected.DELETE("/transactions/:id", txHandler.Delete)
 	}
 
 	return r

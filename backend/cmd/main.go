@@ -22,7 +22,7 @@ func main() {
 	}
 
 	repo := repository.New(db)
-	router := api.NewRouter(repo, cfg.JWTSecret)
+	router := api.NewRouter(repo, cfg.JWTSecret, cfg.MLServiceURL)
 
 	log.Info("Starting Clarity on port: %v", cfg.Port)
 	router.Run(":" + cfg.Port)
