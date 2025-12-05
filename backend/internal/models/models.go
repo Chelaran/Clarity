@@ -31,6 +31,7 @@ type Transaction struct {
 	UserID      uint      `gorm:"not null;index" json:"user_id"`
 	Amount      float64   `gorm:"not null" json:"amount"`
 	Description string    `json:"description"`
+	RefNo       string    `json:"ref_no"`              // Референсный номер транзакции (для ML классификации)
 	Category    string    `json:"category"`
 	Date        time.Time `gorm:"index" json:"date"`
 	Type        string    `gorm:"not null" json:"type"` // income/expense

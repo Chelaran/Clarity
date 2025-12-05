@@ -27,6 +27,7 @@ func NewTransactionHandler(repo *repository.Repository, mlClient *service.MLClie
 type CreateTransactionRequest struct {
 	Amount      float64 `json:"amount" binding:"required"`
 	Description string  `json:"description"`
+	RefNo       string  `json:"ref_no"`              // Референсный номер транзакции
 	Date        string  `json:"date"`
 	Type        string  `json:"type" binding:"required,oneof=income expense"`
 	IsEssential bool    `json:"is_essential"`
@@ -49,6 +50,7 @@ func (h *TransactionHandler) Create(c *gin.Context) {
 		UserID:      userID,
 		Amount:      req.Amount,
 		Description: req.Description,
+		RefNo:       req.RefNo,
 		Type:        req.Type,
 		IsEssential: req.IsEssential,
 	}
@@ -64,9 +66,15 @@ func (h *TransactionHandler) Create(c *gin.Context) {
 		tx.Date = time.Now()
 	}
 
-	// ML категоризация
-	if req.Description != "" && req.Type == "expense" {
-		result, err := h.mlClient.Categorize(req.Description, req.Amount)
+	// ML категоризация (только для расходов)
+	if req.Type == "expense" {
+		// Используем ref_no, если есть, иначе description
+		refNo := req.RefNo
+		if refNo == "" && req.Description != "" {
+			refNo = req.Description
+		}
+		
+		result, err := h.mlClient.CategorizeWithDate(refNo, req.Amount, tx.Date)
 		if err == nil {
 			tx.Category = result.Category
 		}

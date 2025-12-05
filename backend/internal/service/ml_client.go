@@ -24,8 +24,9 @@ func NewMLClient(baseURL string) *MLClient {
 }
 
 type CategorizeRequest struct {
-	Description string  `json:"description"`
-	Amount      float64 `json:"amount"`
+	Amount float64 `json:"amount" binding:"required"`
+	Date   string  `json:"date" binding:"required"`
+	RefNo  string  `json:"ref_no" binding:"required"`
 }
 
 type CategorizeResponse struct {
@@ -33,10 +34,17 @@ type CategorizeResponse struct {
 	Confidence  float64 `json:"confidence"`
 }
 
+// Categorize - устаревший метод, используйте CategorizeWithDate
 func (c *MLClient) Categorize(description string, amount float64) (*CategorizeResponse, error) {
+	return c.CategorizeWithDate(description, amount, time.Now())
+}
+
+// CategorizeWithDate - категоризация с датой и ref_no (новый формат)
+func (c *MLClient) CategorizeWithDate(refNo string, amount float64, date time.Time) (*CategorizeResponse, error) {
 	reqBody := CategorizeRequest{
-		Description: description,
-		Amount:      amount,
+		Amount: amount,
+		Date:   date.Format("2006-01-02"),
+		RefNo:  refNo,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
