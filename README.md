@@ -265,6 +265,7 @@ docker compose up -d
 
 ## 📚 Документация
 
+- [Документация API маршрутов](docs/api-documentation.md)
 - [Техническая спецификация](docs/clarity_spec.md)
 - [Объяснение Financial Health Score](docs/HEALTH_SCORE_EXPLANATION.md)
 
