@@ -61,16 +61,16 @@ func (h *AnalyticsHandler) Summary(c *gin.Context) {
 		Select("COALESCE(SUM(amount), 0)").
 		Scan(&totalIncome)
 
-	// Расходы
+	// Расходы (amount уже отрицательный, берем абсолютное значение для отображения)
 	db.Model(&models.Transaction{}).
 		Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, startDate, endDate).
-		Select("COALESCE(SUM(amount), 0)").
+		Select("COALESCE(SUM(ABS(amount)), 0)").
 		Scan(&totalExpense)
 
-	// Обязательные расходы
+	// Обязательные расходы (amount уже отрицательный, берем абсолютное значение)
 	db.Model(&models.Transaction{}).
 		Where("user_id = ? AND type = 'expense' AND is_essential = true AND date >= ? AND date <= ?", userID, startDate, endDate).
-		Select("COALESCE(SUM(amount), 0)").
+		Select("COALESCE(SUM(ABS(amount)), 0)").
 		Scan(&essentialExpense)
 
 	nonEssentialExpense := totalExpense - essentialExpense
@@ -82,7 +82,7 @@ func (h *AnalyticsHandler) Summary(c *gin.Context) {
 	}
 	db.Model(&models.Transaction{}).
 		Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, startDate, endDate).
-		Select("category, COALESCE(SUM(amount), 0) as amount").
+		Select("category, COALESCE(SUM(ABS(amount)), 0) as amount").
 		Group("category").
 		Find(&categoryData)
 
@@ -91,6 +91,7 @@ func (h *AnalyticsHandler) Summary(c *gin.Context) {
 		byCategory[item.Category] = item.Amount
 	}
 
+	// balance = доходы - расходы (расходы уже положительные после ABS)
 	balance := totalIncome - totalExpense
 	savingsRate := 0.0
 	if totalIncome > 0 {
@@ -145,7 +146,7 @@ func (h *AnalyticsHandler) Trends(c *gin.Context) {
 
 		db.Model(&models.Transaction{}).
 			Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, startDate, endDate).
-			Select("COALESCE(SUM(amount), 0)").
+			Select("COALESCE(SUM(ABS(amount)), 0)").
 			Scan(&expense)
 
 		trends = append(trends, TrendData{

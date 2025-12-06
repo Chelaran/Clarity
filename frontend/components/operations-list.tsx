@@ -1,7 +1,24 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { apiUrl } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
+import { Loader2 } from "lucide-react"
+
+interface Transaction {
+  id: number
+  user_id: number
+  amount: number
+  description: string
+  ref_no: string
+  category: string
+  date: string
+  type: "income" | "expense"
+  is_essential: boolean
+  created_at: string
+}
 
 interface Operation {
   id: string
@@ -15,98 +32,155 @@ interface Operation {
   icon: string
 }
 
-const operations: Operation[] = [
-  {
-    id: "1",
-    date: "Сегодня",
-    time: "14:30",
-    title: "ВкусВилл",
-    category: "Еда",
-    description: "Продукты для дома",
-    amount: -2450,
-    card: "CARD • 4291",
-    icon: "🛒",
-  },
-  {
-    id: "2",
-    date: "Вчера",
-    time: "10:00",
-    title: "Зарплата",
-    category: "Зарплата",
-    description: "Tech Corp LLC",
-    amount: 125000,
-    card: "CARD • 4291",
-    icon: "💰",
-  },
-  {
-    id: "3",
-    date: "Вчера",
-    time: "09:15",
-    title: "Uber",
-    category: "Транспорт",
-    description: "Поездка в офис",
-    amount: -450,
-    card: "CARD • 4291",
-    icon: "🚗",
-  },
-  {
-    id: "4",
-    date: "22 Окт",
-    time: "19:09",
-    title: "Netflix",
-    category: "Развлечения",
-    description: "Ежемесячная подписка",
-    amount: -890,
-    card: "CARD • 4291",
-    icon: "📺",
-  },
-  {
-    id: "5",
-    date: "21 Окт",
-    time: "18:40",
-    title: "Аптека",
-    category: "Здоровье",
-    description: "Витамины",
-    amount: -1200,
-    card: "CARD • 4291",
-    icon: "🍌",
-  },
-  {
-    id: "6",
-    date: "21 Окт",
-    time: "08:39",
-    title: "Кофейня №1",
-    category: "Еда",
-    description: "Латте и круассан",
-    amount: -650,
-    card: "CARD • 4291",
-    icon: "☕",
-  },
-  {
-    id: "7",
-    date: "20 Окт",
-    time: "12:08",
-    title: "Сбербанк",
-    category: "Кэшбэк",
-    description: "Кэшбэк за сентябрь",
-    amount: 1450,
-    card: "CARD • 4291",
-    icon: "🏦",
-  },
-  {
-    id: "8",
-    date: "19 Окт",
-    time: "08:50",
-    title: "Метро",
-    category: "Транспорт",
-    description: "Пополнение тройки",
-    amount: -500,
-    card: "CARD • 4291",
-    icon: "🚇",
-  },
-]
+// Маппинг категорий на иконки
+const categoryIcons: Record<string, string> = {
+  Food: "🛒",
+  Transport: "🚗",
+  Shopping: "🛍️",
+  Rent: "🏠",
+  Health: "💊",
+  Education: "📚",
+  Entertainment: "🎬",
+  Salary: "💰",
+  Misc: "📝",
+  Другое: "📝",
+}
+
+// Функция для форматирования даты
+const formatDate = (dateString: string): { date: string; time: string } => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const transactionDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+
+  let dateStr: string
+  if (transactionDate.getTime() === today.getTime()) {
+    dateStr = "Сегодня"
+  } else if (transactionDate.getTime() === yesterday.getTime()) {
+    dateStr = "Вчера"
+  } else {
+    const months = [
+      "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
+      "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"
+    ]
+    dateStr = `${date.getDate()} ${months[date.getMonth()]}`
+  }
+
+  const timeStr = date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+
+  return { date: dateStr, time: timeStr }
+}
+
+// Преобразование транзакции в формат операции
+const transactionToOperation = (tx: Transaction): Operation => {
+  const { date, time } = formatDate(tx.date)
+  const icon = categoryIcons[tx.category] || "📝"
+  
+  return {
+    id: tx.id.toString(),
+    date,
+    time,
+    title: tx.description || tx.category || "Без описания",
+    category: tx.category || "Другое",
+    description: tx.description || "",
+    amount: tx.amount,
+    card: tx.ref_no ? `REF • ${tx.ref_no}` : "CARD • 4291",
+    icon,
+  }
+}
 
 export function OperationsList() {
+  const { token } = useAuth()
+  const [operations, setOperations] = useState<Operation[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const limit = 20
+
+  const fetchTransactions = async (reset = false) => {
+    if (!token) {
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      const currentOffset = reset ? 0 : offset
+      const response = await fetch(
+        `${apiUrl("/transactions")}?limit=${limit}&offset=${currentOffset}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Не удалось загрузить транзакции")
+      }
+
+      const data: Transaction[] = await response.json()
+      const newOperations = data.map(transactionToOperation)
+
+      if (reset) {
+        setOperations(newOperations)
+        setOffset(limit)
+      } else {
+        setOperations((prev) => [...prev, ...newOperations])
+        setOffset((prev) => prev + limit)
+      }
+
+      setHasMore(data.length === limit)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Произошла ошибка")
+      console.error("Error fetching transactions:", err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTransactions(true)
+  }, [token])
+
+  const loadMore = () => {
+    if (!isLoading && hasMore) {
+      fetchTransactions(false)
+    }
+  }
+
+  if (isLoading && operations.length === 0) {
+    return (
+      <div className="bg-card rounded-xl border border-border p-12 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (error && operations.length === 0) {
+    return (
+      <div className="bg-card rounded-xl border border-border p-12 text-center">
+        <p className="text-destructive mb-4">{error}</p>
+        <Button onClick={() => fetchTransactions(true)} variant="outline">
+          Попробовать снова
+        </Button>
+      </div>
+    )
+  }
+
+  if (operations.length === 0) {
+    return (
+      <div className="bg-card rounded-xl border border-border p-12 text-center">
+        <p className="text-muted-foreground">Нет транзакций</p>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <div className="divide-y divide-border">
@@ -153,11 +227,25 @@ export function OperationsList() {
       </div>
 
       {/* Load more button */}
-      <div className="p-6 border-t border-border bg-muted/30">
-        <Button variant="ghost" className="w-full text-muted-foreground hover:text-foreground">
-          Загрузить больше
-        </Button>
-      </div>
+      {hasMore && (
+        <div className="p-6 border-t border-border bg-muted/30">
+          <Button
+            variant="ghost"
+            className="w-full text-muted-foreground hover:text-foreground"
+            onClick={loadMore}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Загрузка...
+              </>
+            ) : (
+              "Загрузить больше"
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

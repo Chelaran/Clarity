@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context" // Импортируем хук авторизации
+import { apiUrl } from "@/lib/api"
 
 interface AddOperationModalProps {
   open: boolean
@@ -85,7 +86,7 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
       }
 
       // 2. Отправка запроса
-      const response = await fetch("http://localhost:8080/api/transactions", {
+      const response = await fetch(apiUrl("/transactions"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
