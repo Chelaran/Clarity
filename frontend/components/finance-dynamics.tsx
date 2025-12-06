@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context"
 import { apiUrl } from "@/lib/api"
 import { useRefresh } from "@/components/refresh-context"
 import { Loader2 } from "lucide-react"
+import { motion } from "framer-motion"
 
 interface TrendData {
   month: string // "2025-07"
@@ -116,9 +117,19 @@ export function FinanceDynamics() {
   }
 
   return (
-    <div className="bg-card rounded-2xl border border-border p-4 sm:p-6">
+    <motion.div
+      className="bg-card rounded-2xl border border-border p-4 sm:p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+    >
       {/* ХЕДЕР */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+      <motion.div
+        className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2, duration: 0.4 }}
+      >
         <h3 className="text-lg font-semibold">Динамика финансов</h3>
         
         <div className="flex flex-row items-center justify-between w-full md:w-auto md:gap-6">
@@ -140,10 +151,15 @@ export function FinanceDynamics() {
             </button>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* ГРАФИК SVG */}
-      <div className="relative h-[250px] sm:h-[300px] w-full overflow-x-auto custom-scrollbar">
+      <motion.div
+        className="relative h-[250px] sm:h-[300px] w-full overflow-x-auto custom-scrollbar"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.3, duration: 0.6, ease: "easeOut" }}
+      >
         <svg viewBox="0 0 700 300" className="w-full h-full min-w-[600px]">
           <defs>
             {/* Градиент для красоты под линией (можно включить, если использовать area chart) */}
@@ -166,25 +182,39 @@ export function FinanceDynamics() {
           ))}
 
           {/* Линия Доходов (Зеленая) */}
-          <polyline
+          <motion.polyline
             points={pointsIncome}
             fill="none"
-            stroke="#10b981" // emerald-500
+            stroke="#10b981"
             strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="drop-shadow-sm transition-all duration-1000 ease-out"
+            className="drop-shadow-sm"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{
+              pathLength: { duration: 1.2, ease: "easeOut" },
+              opacity: { duration: 0.6 },
+              delay: 0.4,
+            }}
           />
 
           {/* Линия Расходов (Красная) */}
-          <polyline
+          <motion.polyline
             points={pointsExpense}
             fill="none"
-            stroke="#ef4444" // red-500
+            stroke="#ef4444"
             strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="drop-shadow-sm transition-all duration-1000 ease-out"
+            className="drop-shadow-sm"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{
+              pathLength: { duration: 1.2, ease: "easeOut" },
+              opacity: { duration: 0.6 },
+              delay: 0.6,
+            }}
           />
 
           {/* Подписи оси X (Месяцы) */}
@@ -223,7 +253,7 @@ export function FinanceDynamics() {
              <p className="text-sm text-muted-foreground">Недостаточно данных для графика</p>
            </div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

@@ -6,6 +6,7 @@ import { Loader2, PieChart } from "lucide-react"
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { useRefresh } from "@/components/refresh-context"
+import { motion } from "framer-motion"
 
 // Интерфейс элемента данных для графика
 interface ExpenseItem {
@@ -157,14 +158,29 @@ export function ExpenseChart() {
   }
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-foreground">Структура расходов</h2>
-      </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+    >
+      <Card className="p-6">
+        <motion.div
+          className="flex items-center justify-between mb-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.1, duration: 0.4 }}
+        >
+          <h2 className="text-lg font-semibold text-foreground">Структура расходов</h2>
+        </motion.div>
 
-      <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6">
-        {/* График (Donut Chart) */}
-        <div className="relative w-56 h-56 lg:w-64 lg:h-64 shrink-0">
+        <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6">
+          {/* График (Donut Chart) */}
+          <motion.div
+            className="relative w-56 h-56 lg:w-64 lg:h-64 shrink-0"
+            initial={{ opacity: 0, scale: 0.8, rotate: -180 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ delay: 0.2, duration: 0.8, ease: "easeOut" }}
+          >
           <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90">
             {chartData.map((expense, index) => {
               // Считаем сумму процентов ДО текущего элемента, чтобы повернуть сегмент
@@ -179,7 +195,7 @@ export function ExpenseChart() {
               const rotation = (previousPercentage / 100) * 360
 
               return (
-                <circle
+                <motion.circle
                   key={expense.originalKey}
                   cx="100"
                   cy="100"
@@ -188,34 +204,65 @@ export function ExpenseChart() {
                   stroke={expense.color}
                   strokeWidth="40"
                   strokeDasharray={circumference}
-                  strokeDashoffset={offset}
-                  className="transition-all duration-500 ease-out"
+                  initial={{ strokeDashoffset: circumference, opacity: 0 }}
+                  animate={{ strokeDashoffset: offset, opacity: 1 }}
+                  transition={{
+                    strokeDashoffset: {
+                      duration: 1,
+                      delay: 0.3 + index * 0.1,
+                      ease: "easeOut",
+                    },
+                    opacity: { duration: 0.5, delay: 0.3 + index * 0.1 },
+                  }}
                   style={{
                     transformOrigin: "100px 100px",
                     transform: `rotate(${rotation}deg)`,
                   }}
+                  whileHover={{ strokeWidth: "45", transition: { duration: 0.2 } }}
                 />
               )
             })}
           </svg>
           
           {/* Текст в центре */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <motion.div
+            className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.6, duration: 0.5 }}
+          >
             <p className="text-sm text-muted-foreground">Всего</p>
-            <p className="text-2xl font-bold text-foreground">
-              {/* Форматируем: 128 500 ₽ или 128k, если очень много */}
+            <motion.p
+              className="text-2xl font-bold text-foreground"
+              key={totalExpense}
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.7, duration: 0.4 }}
+            >
               {totalExpense > 999999 
                 ? `${(totalExpense / 1000000).toFixed(1)}M` 
                 : `${Math.round(totalExpense).toLocaleString("ru-RU")}`
               } ₽
-            </p>
-          </div>
-        </div>
+            </motion.p>
+          </motion.div>
+        </motion.div>
 
         {/* Легенда (Список справа или снизу) */}
-        <div className="flex-1 w-full lg:max-w-none space-y-2.5 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
-          {chartData.map((expense) => (
-            <div key={expense.originalKey} className="flex items-center justify-between gap-3">
+        <motion.div
+          className="flex-1 w-full lg:max-w-none space-y-2.5 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.4, duration: 0.5 }}
+        >
+          {chartData.map((expense, index) => (
+            <motion.div
+              key={expense.originalKey}
+              className="flex items-center justify-between gap-3"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.5 + index * 0.05, duration: 0.4 }}
+              whileHover={{ x: 4, transition: { duration: 0.2 } }}
+            >
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <div 
                   className="w-3 h-3 rounded-full shrink-0" 
@@ -237,10 +284,11 @@ export function ExpenseChart() {
                   {expense.percentage.toFixed(1)}%
                 </span>
               </div>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
     </Card>
+    </motion.div>
   )
 }

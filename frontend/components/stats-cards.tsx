@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card"
 import { TrendingUp, TrendingDown, Loader2 } from "lucide-react"
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { useRefresh } from "@/components/refresh-context" // 1. Импортируем контекст
+import { useRefresh } from "@/components/refresh-context"
+import { motion } from "framer-motion"
 
 interface SummaryData {
   month: string
@@ -129,19 +130,68 @@ export function StatsCards() {
     )
   }
 
-  const incomeChange = calculateChange(summary.total_income, prevSummary?.total_income)
-  const expenseChange = calculateChange(summary.total_expense, prevSummary?.total_expense)
+  const incomeChange = calculateChange(summary.total_income, prevSummary?.total_income ?? null)
+  const expenseChange = calculateChange(summary.total_expense, prevSummary?.total_expense ?? null)
   const balance = summary.balance // Баланс за месяц
   const availableToSpend = Math.max(0, balance * 0.3) // 30% от остатка можно потратить
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+        delayChildren: 0.1,
+      },
+    },
+  }
+
+  const cardVariants = {
+    hidden: { opacity: 0, y: 20, scale: 0.95 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: 0.5,
+        ease: "easeOut" as const,
+      },
+    },
+  }
+
+  const numberVariants = {
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      transition: {
+        duration: 0.6,
+        delay: 0.2,
+        ease: "easeOut" as const,
+      },
+    },
+  }
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <motion.div
+      className="grid grid-cols-1 md:grid-cols-3 gap-4"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
       {/* Income Card */}
-      <Card className="p-6 bg-[#E8F5F0] border-0">
+      <motion.div variants={cardVariants} whileHover={{ scale: 1.02, y: -2 }} transition={{ duration: 0.2 }}>
+        <Card className="p-6 bg-[#E8F5F0] border-0 cursor-pointer transition-shadow hover:shadow-lg">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">Доходы</p>
-            <p className="text-3xl font-bold text-foreground mb-1">{formatNumber(summary.total_income)} ₽</p>
+            <motion.p
+              className="text-3xl font-bold text-foreground mb-1"
+              variants={numberVariants}
+              key={summary.total_income}
+            >
+              {formatNumber(summary.total_income)} ₽
+            </motion.p>
             {prevSummary && (
               <div className={`flex items-center gap-1 ${incomeChange.isPositive ? "text-success" : "text-destructive"}`}>
                 {incomeChange.isPositive ? (
@@ -169,13 +219,21 @@ export function StatsCards() {
           </div>
         </div>
       </Card>
+      </motion.div>
 
       {/* Expense Card */}
-      <Card className="p-6 bg-[#FFF4E6] border-0">
+      <motion.div variants={cardVariants} whileHover={{ scale: 1.02, y: -2 }} transition={{ duration: 0.2 }}>
+        <Card className="p-6 bg-[#FFF4E6] border-0 cursor-pointer transition-shadow hover:shadow-lg">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">Расходы</p>
-            <p className="text-3xl font-bold text-foreground mb-1">{formatNumber(Math.abs(summary.total_expense))} ₽</p>
+            <motion.p
+              className="text-3xl font-bold text-foreground mb-1"
+              variants={numberVariants}
+              key={summary.total_expense}
+            >
+              {formatNumber(Math.abs(summary.total_expense))} ₽
+            </motion.p>
             {prevSummary && (
               <div className={`flex items-center gap-1 ${expenseChange.isPositive ? "text-destructive" : "text-success"}`}>
                 {expenseChange.isPositive ? (
@@ -203,13 +261,21 @@ export function StatsCards() {
           </div>
         </div>
       </Card>
+      </motion.div>
 
       {/* Balance Card */}
-      <Card className="p-6 bg-[#E6F2FF] border-0">
+      <motion.div variants={cardVariants} whileHover={{ scale: 1.02, y: -2 }} transition={{ duration: 0.2 }}>
+        <Card className="p-6 bg-[#E6F2FF] border-0 cursor-pointer transition-shadow hover:shadow-lg">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">Остаток</p>
-            <p className="text-3xl font-bold text-foreground mb-1">{formatNumber(balance)} ₽</p>
+            <motion.p
+              className="text-3xl font-bold text-foreground mb-1"
+              variants={numberVariants}
+              key={balance}
+            >
+              {formatNumber(balance)} ₽
+            </motion.p>
             <p className="text-sm text-muted-foreground">
               Можно потратить {formatNumber(availableToSpend)} ₽
             </p>
@@ -227,6 +293,7 @@ export function StatsCards() {
           </div>
         </div>
       </Card>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

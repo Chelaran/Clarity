@@ -8,7 +8,8 @@ import { useAuth } from "@/lib/auth-context"
 import { Loader2 } from "lucide-react"
 import { DateRange } from "react-day-picker"
 import { format } from "date-fns"
-import { useRefresh } from "@/components/refresh-context" // <--- 1. Импортируем контекст
+import { useRefresh } from "@/components/refresh-context"
+import { motion, AnimatePresence } from "framer-motion"
 
 // --- ИНТЕРФЕЙСЫ ---
 interface Transaction {
@@ -246,11 +247,61 @@ export function OperationsList({ activeFilter, searchQuery, dateRange }: Operati
     )
   }
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.05,
+        delayChildren: 0.1,
+      },
+    },
+  }
+
+  const itemVariants = {
+    hidden: { opacity: 0, x: -20, y: 10 },
+    visible: {
+      opacity: 1,
+      x: 0,
+      y: 0,
+      transition: {
+        duration: 0.4,
+        ease: "easeOut" as const,
+      },
+    },
+    exit: {
+      opacity: 0,
+      x: 20,
+      transition: {
+        duration: 0.3,
+      },
+    },
+  }
+
   return (
-    <div className="bg-card rounded-xl border border-border overflow-hidden">
-      <div className="divide-y divide-border">
-        {operations.map((operation) => (
-          <div key={operation.id} className="p-6 hover:bg-muted/50 transition-colors">
+    <motion.div
+      className="bg-card rounded-xl border border-border overflow-hidden"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <motion.div
+        className="divide-y divide-border"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <AnimatePresence mode="popLayout">
+          {operations.map((operation, index) => (
+            <motion.div
+              key={operation.id}
+              variants={itemVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              whileHover={{ x: 4, transition: { duration: 0.2 } }}
+              className="p-6 hover:bg-muted/50 transition-colors cursor-pointer"
+            >
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-[120px]">
                 <div className="text-right">
@@ -284,9 +335,10 @@ export function OperationsList({ activeFilter, searchQuery, dateRange }: Operati
                 <div className="text-xs text-muted-foreground">{operation.card}</div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          </motion.div>
+          ))}
+        </AnimatePresence>
+      </motion.div>
 
       {hasMore && (
         <div className="p-6 border-t border-border bg-muted/30">
@@ -307,6 +359,6 @@ export function OperationsList({ activeFilter, searchQuery, dateRange }: Operati
           </Button>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }
