@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { Loader2 } from "lucide-react"
 
+// --- ИНТЕРФЕЙСЫ ---
 interface Transaction {
   id: number
   user_id: number
@@ -32,21 +33,24 @@ interface Operation {
   icon: string
 }
 
-// Маппинг категорий на иконки
+// --- ХЕЛПЕРЫ ---
 const categoryIcons: Record<string, string> = {
   Food: "🛒",
   Transport: "🚗",
   Shopping: "🛍️",
   Rent: "🏠",
+  Housing: "🏠",
   Health: "💊",
   Education: "📚",
   Entertainment: "🎬",
   Salary: "💰",
   Misc: "📝",
-  Другое: "📝",
+  products: "🛒",
+  transport: "🚗",
+  housing: "🏠",
+  other: "📝",
 }
 
-// Функция для форматирования даты
 const formatDate = (dateString: string): { date: string; time: string } => {
   const date = new Date(dateString)
   const now = new Date()
@@ -69,14 +73,12 @@ const formatDate = (dateString: string): { date: string; time: string } => {
   }
 
   const timeStr = date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-
   return { date: dateStr, time: timeStr }
 }
 
-// Преобразование транзакции в формат операции
 const transactionToOperation = (tx: Transaction): Operation => {
   const { date, time } = formatDate(tx.date)
-  const icon = categoryIcons[tx.category] || "📝"
+  const icon = categoryIcons[tx.category] || categoryIcons[tx.category.toLowerCase()] || "📝"
   
   return {
     id: tx.id.toString(),
@@ -86,12 +88,19 @@ const transactionToOperation = (tx: Transaction): Operation => {
     category: tx.category || "Другое",
     description: tx.description || "",
     amount: tx.amount,
-    card: tx.ref_no ? `REF • ${tx.ref_no}` : "CARD • 4291",
+    card: tx.ref_no ? `REF • ${tx.ref_no.slice(-4)}` : "CARD • 4291",
     icon,
   }
 }
 
-export function OperationsList() {
+// --- КОМПОНЕНТ ---
+
+interface OperationsListProps {
+  activeFilter: string
+  searchQuery: string
+}
+
+export function OperationsList({ activeFilter, searchQuery }: OperationsListProps) {
   const { token } = useAuth()
   const [operations, setOperations] = useState<Operation[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -100,32 +109,57 @@ export function OperationsList() {
   const [hasMore, setHasMore] = useState(true)
   const limit = 20
 
-  const fetchTransactions = async (reset = false) => {
+  const fetchTransactions = useCallback(async (reset = false) => {
     if (!token) {
       setIsLoading(false)
       return
     }
 
     try {
-      setIsLoading(true)
-      setError(null)
+      if (reset) {
+        setIsLoading(true)
+        setError(null)
+      }
 
       const currentOffset = reset ? 0 : offset
-      const response = await fetch(
-        `${apiUrl("/transactions")}?limit=${limit}&offset=${currentOffset}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      )
+      
+      let url = `${apiUrl("/transactions")}?limit=${limit}&offset=${currentOffset}`
+      
+      if (activeFilter === "expense") url += "&type=expense"
+      else if (activeFilter === "income") url += "&type=income"
+
+      if (searchQuery) {
+        url += `&search=${encodeURIComponent(searchQuery)}`
+      }
+
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
 
       if (!response.ok) {
         throw new Error("Не удалось загрузить транзакции")
       }
 
       const data: Transaction[] = await response.json()
-      const newOperations = data.map(transactionToOperation)
+
+      // Клиентская фильтрация
+      let filteredData = data
+
+      if (activeFilter === "expense") {
+        filteredData = filteredData.filter(t => t.type === "expense" || t.amount < 0)
+      } else if (activeFilter === "income") {
+        filteredData = filteredData.filter(t => t.type === "income" || t.amount > 0)
+      }
+
+      if (searchQuery) {
+        const lowerQuery = searchQuery.toLowerCase()
+        filteredData = filteredData.filter(t => 
+          (t.category && t.category.toLowerCase().includes(lowerQuery)) ||
+          (t.description && t.description.toLowerCase().includes(lowerQuery))
+        )
+      }
+
+      const newOperations = filteredData.map(transactionToOperation)
 
       if (reset) {
         setOperations(newOperations)
@@ -136,17 +170,25 @@ export function OperationsList() {
       }
 
       setHasMore(data.length === limit)
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "Произошла ошибка")
-      console.error("Error fetching transactions:", err)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [token, activeFilter, offset, searchQuery])
 
+  // Эффект для отслеживания изменений фильтра и поиска
   useEffect(() => {
-    fetchTransactions(true)
-  }, [token])
+    const timer = setTimeout(() => {
+      setOperations([])
+      setOffset(0)
+      fetchTransactions(true) 
+    }, 300)
+
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilter, searchQuery, token]) 
 
   const loadMore = () => {
     if (!isLoading && hasMore) {
@@ -176,7 +218,7 @@ export function OperationsList() {
   if (operations.length === 0) {
     return (
       <div className="bg-card rounded-xl border border-border p-12 text-center">
-        <p className="text-muted-foreground">Нет транзакций</p>
+        <p className="text-muted-foreground">Транзакций не найдено</p>
       </div>
     )
   }
@@ -187,7 +229,6 @@ export function OperationsList() {
         {operations.map((operation) => (
           <div key={operation.id} className="p-6 hover:bg-muted/50 transition-colors">
             <div className="flex items-center justify-between gap-4">
-              {/* Left: Date, Time, Icon */}
               <div className="flex items-center gap-4 min-w-[120px]">
                 <div className="text-right">
                   <div className="text-sm font-medium text-foreground">{operation.date}</div>
@@ -198,18 +239,16 @@ export function OperationsList() {
                 </div>
               </div>
 
-              {/* Middle: Title, Category, Description */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-semibold text-foreground">{operation.title}</h3>
-                  <Badge variant="secondary" className="text-xs">
+                  <h3 className="font-semibold text-foreground truncate">{operation.title}</h3>
+                  <Badge variant="secondary" className="text-xs shrink-0">
                     {operation.category}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground truncate">{operation.description}</p>
               </div>
 
-              {/* Right: Amount and Card */}
               <div className="text-right min-w-[140px]">
                 <div
                   className={`text-lg font-semibold mb-0.5 ${
@@ -226,7 +265,6 @@ export function OperationsList() {
         ))}
       </div>
 
-      {/* Load more button */}
       {hasMore && (
         <div className="p-6 border-t border-border bg-muted/30">
           <Button
