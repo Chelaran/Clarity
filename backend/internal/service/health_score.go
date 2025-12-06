@@ -676,6 +676,8 @@ type ExpenseDetailsResponse struct {
 type SavingsDetailsResponse struct {
 	TotalBalance        float64 `json:"total_balance"`
 	EmergencyFundMonths float64 `json:"emergency_fund_months"`
+	TargetAmount        float64 `json:"target_amount"`        // Цель финансовой подушки (6 месяцев расходов)
+	AvgMonthlyExpense   float64 `json:"avg_monthly_expense"`   // Средние расходы за месяц
 	Recommendation      string  `json:"recommendation"`
 }
 
@@ -865,18 +867,53 @@ func (s *HealthScoreService) GetSavingsDetails(userID uint) (*SavingsDetailsResp
 		Select("COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0)").
 		Scan(&totalBalance)
 
-	// Получаем все расходы (используем как средние расходы за месяц)
+	// Финансовая подушка рассчитывается на основе ВСЕХ расходов за последние 3 месяца
+	// Это гарантирует, что цель не будет расти при каждом новом доходе
+	now := time.Now()
 	var totalExpense float64
-	s.db.Model(&models.Transaction{}).
-		Where("user_id = ? AND type = 'expense'", userID).
-		Select("COALESCE(SUM(amount), 0)").
-		Scan(&totalExpense)
+	monthCount := 0
 
-	// Если есть расходы, используем их как средние расходы за месяц
-	// (для более точного расчета можно было бы считать по месяцам, но для MVP это достаточно)
-	monthCount := 1
-	if totalExpense == 0 {
-		monthCount = 0
+	// Считаем все расходы за последние 3 месяца
+	for i := 2; i >= 0; i-- {
+		monthDate := now.AddDate(0, -i, 0)
+		startDate := monthDate.Format("2006-01-02")
+		lastDay := monthDate.AddDate(0, 1, 0).AddDate(0, 0, -1)
+		endDate := lastDay.Format("2006-01-02")
+
+		var monthExpense float64
+		s.db.Model(&models.Transaction{}).
+			Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, startDate, endDate).
+			Select("COALESCE(SUM(ABS(amount)), 0)").
+			Scan(&monthExpense)
+
+		if monthExpense > 0 {
+			totalExpense += monthExpense
+			monthCount++
+		}
+	}
+
+	// Если нет данных за последние 3 месяца, используем все расходы
+	if monthCount == 0 {
+		// Получаем количество месяцев с транзакциями
+		var monthsWithTransactions []struct {
+			Month string
+		}
+		s.db.Model(&models.Transaction{}).
+			Where("user_id = ? AND type = 'expense'", userID).
+			Select("DISTINCT DATE_TRUNC('month', date)::text as month").
+			Order("month").
+			Scan(&monthsWithTransactions)
+
+		monthCount = len(monthsWithTransactions)
+		if monthCount == 0 {
+			monthCount = 1 // Чтобы избежать деления на ноль
+		}
+
+		// Суммируем все расходы
+		s.db.Model(&models.Transaction{}).
+			Where("user_id = ? AND type = 'expense'", userID).
+			Select("COALESCE(SUM(ABS(amount)), 0)").
+			Scan(&totalExpense)
 	}
 
 	avgExpense := 0.0
@@ -884,6 +921,52 @@ func (s *HealthScoreService) GetSavingsDetails(userID uint) (*SavingsDetailsResp
 		avgExpense = totalExpense / float64(monthCount)
 	}
 
+	// Определяем количество месяцев на основе стабильности дохода
+	// Анализируем доходы за последние 3 месяца для расчета волатильности
+	var incomeValues []float64
+	for i := 2; i >= 0; i-- {
+		monthDate := now.AddDate(0, -i, 0)
+		startDate := monthDate.Format("2006-01-02")
+		lastDay := monthDate.AddDate(0, 1, 0).AddDate(0, 0, -1)
+		endDate := lastDay.Format("2006-01-02")
+
+		var monthIncome float64
+		s.db.Model(&models.Transaction{}).
+			Where("user_id = ? AND type = 'income' AND date >= ? AND date <= ?", userID, startDate, endDate).
+			Select("COALESCE(SUM(amount), 0)").
+			Scan(&monthIncome)
+
+		if monthIncome > 0 {
+			incomeValues = append(incomeValues, monthIncome)
+		}
+	}
+
+	// Вычисляем коэффициент вариации дохода
+	targetMonths := 6.0 // По умолчанию 6 месяцев
+	if len(incomeValues) >= 2 {
+		var sum, sumSq float64
+		for _, val := range incomeValues {
+			sum += val
+			sumSq += val * val
+		}
+		mean := sum / float64(len(incomeValues))
+		if mean > 0 {
+			variance := (sumSq / float64(len(incomeValues))) - (mean * mean)
+			stdDev := math.Sqrt(variance)
+			cv := stdDev / mean // Коэффициент вариации
+			
+			// Если доход стабильный (CV < 0.2), достаточно 3 месяцев
+			// Если нестабильный (CV >= 0.2), нужно 6 месяцев
+			if cv < 0.2 {
+				targetMonths = 3.0
+			}
+		}
+	}
+
+	// Цель финансовой подушки = средние расходы × количество месяцев
+	targetAmount := avgExpense * targetMonths
+
+	// Текущая подушка = сколько месяцев расходов покрывает текущий баланс
 	emergencyFundMonths := 0.0
 	if avgExpense > 0 {
 		emergencyFundMonths = totalBalance / avgExpense
@@ -892,17 +975,22 @@ func (s *HealthScoreService) GetSavingsDetails(userID uint) (*SavingsDetailsResp
 	recommendation := "Ваши свободные средства составляют " + formatMoney(totalBalance) + " рублей. "
 	if avgExpense == 0 {
 		recommendation += "Недостаточно данных для расчета финансовой подушки. Добавьте информацию о расходах."
-	} else if emergencyFundMonths < 3 {
-		recommendation += "Финансовая подушка критически мала. Рекомендуется накопить минимум 3 месяца расходов (примерно " + formatMoney(avgExpense*3) + " рублей)."
-	} else if emergencyFundMonths >= 6 {
-		recommendation += "Отличная финансовая подушка! У вас достаточно средств на " + formatMonths(emergencyFundMonths) + "."
 	} else {
-		recommendation += "Хорошая финансовая подушка. У вас достаточно средств на " + formatMonths(emergencyFundMonths) + ". Для оптимального уровня рекомендуется накопить 6 месяцев расходов."
+		monthsText := fmt.Sprintf("%.0f", targetMonths)
+		if emergencyFundMonths < 3 {
+			recommendation += "Финансовая подушка критически мала. Рекомендуется накопить минимум 3 месяца расходов (примерно " + formatMoney(avgExpense*3) + " рублей). Оптимальная цель: " + formatMoney(targetAmount) + " рублей (" + monthsText + " месяцев расходов, рассчитано на основе средних расходов за последние 3 месяца)."
+		} else if emergencyFundMonths >= targetMonths {
+			recommendation += "Отличная финансовая подушка! У вас достаточно средств на " + formatMonths(emergencyFundMonths) + " расходов."
+		} else {
+			recommendation += "Хорошая финансовая подушка. У вас достаточно средств на " + formatMonths(emergencyFundMonths) + " расходов. Для оптимального уровня рекомендуется накопить " + monthsText + " месяцев расходов (" + formatMoney(targetAmount) + " рублей, рассчитано на основе средних расходов за последние 3 месяца)."
+		}
 	}
 
 	return &SavingsDetailsResponse{
 		TotalBalance:        math.Round(totalBalance*100) / 100,
 		EmergencyFundMonths: math.Round(emergencyFundMonths*100) / 100,
+		TargetAmount:        math.Round(targetAmount*100) / 100,
+		AvgMonthlyExpense:   math.Round(avgExpense*100) / 100, // Средние расходы за месяц
 		Recommendation:      recommendation,
 	}, nil
 }
