@@ -45,6 +45,7 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string, yand
 		protected.PATCH("/transactions/:id", txHandler.Update)
 		protected.DELETE("/transactions/:id", txHandler.Delete)
 		protected.GET("/transactions/export", txHandler.ExportTransactions)
+		protected.GET("/transactions/report", txHandler.ExportReport)
 		protected.POST("/transactions/import", txHandler.ImportTransactions)
 
 		protected.POST("/investments", investmentHandler.Create)

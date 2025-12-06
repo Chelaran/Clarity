@@ -12,14 +12,20 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // ExportTransactions - экспорт транзакций в CSV
 func (h *TransactionHandler) ExportTransactions(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
-	// Получаем все транзакции пользователя
-	transactions, err := h.repo.GetTransactions(userID, 10000, 0, "", "", "")
+	// Получаем параметры фильтрации из query
+	month := c.Query("month")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	// Получаем транзакции с учетом фильтров
+	transactions, err := h.repo.GetTransactions(userID, 10000, 0, month, startDate, endDate)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transactions"})
 		return
@@ -39,6 +45,138 @@ func (h *TransactionHandler) ExportTransactions(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write CSV header"})
 		return
 	}
+
+	// Записываем транзакции
+	for _, tx := range transactions {
+		record := []string{
+			tx.Date.Format("2006-01-02"),
+			fmt.Sprintf("%.2f", tx.Amount),
+			tx.Type,
+			tx.Description,
+			tx.RefNo,
+			tx.Category,
+			strconv.FormatBool(tx.IsEssential),
+		}
+		if err := writer.Write(record); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write CSV record"})
+			return
+		}
+	}
+}
+
+// ExportReport - экспорт детального отчета с аналитикой
+func (h *TransactionHandler) ExportReport(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	// Получаем параметры фильтрации из query
+	month := c.Query("month")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	// Получаем транзакции с учетом фильтров
+	transactions, err := h.repo.GetTransactions(userID, 10000, 0, month, startDate, endDate)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transactions"})
+		return
+	}
+
+	// Вычисляем аналитику
+	var totalIncome, totalExpense, essentialExpense float64
+	var categoryData []struct {
+		Category string
+		Amount   float64
+	}
+
+	db := h.repo.DB()
+
+	// Строим базовый запрос с фильтрами по дате
+	buildQuery := func(query *gorm.DB) *gorm.DB {
+		query = query.Where("user_id = ?", userID)
+		if month != "" {
+			query = query.Where("DATE_TRUNC('month', date) = ?", month)
+		} else if startDate != "" && endDate != "" {
+			query = query.Where("date >= ? AND date <= ?", startDate, endDate)
+		} else if startDate != "" {
+			query = query.Where("date >= ?", startDate)
+		} else if endDate != "" {
+			query = query.Where("date <= ?", endDate)
+		}
+		return query
+	}
+
+	// Доходы
+	incomeQuery := buildQuery(db.Model(&models.Transaction{}).Where("type = ?", "income"))
+	incomeQuery.Select("COALESCE(SUM(amount), 0)").Scan(&totalIncome)
+
+	// Расходы
+	expenseQuery := buildQuery(db.Model(&models.Transaction{}).Where("type = ?", "expense"))
+	expenseQuery.Select("COALESCE(SUM(ABS(amount)), 0)").Scan(&totalExpense)
+
+	// Обязательные расходы
+	essentialQuery := buildQuery(db.Model(&models.Transaction{}).Where("type = ? AND is_essential = ?", "expense", true))
+	essentialQuery.Select("COALESCE(SUM(ABS(amount)), 0)").Scan(&essentialExpense)
+
+	// По категориям
+	categoryQuery := buildQuery(db.Model(&models.Transaction{}).Where("type = ?", "expense"))
+	categoryQuery.Select("category, COALESCE(SUM(ABS(amount)), 0) as amount").
+		Group("category").
+		Find(&categoryData)
+
+	balance := totalIncome - totalExpense
+	savingsRate := 0.0
+	if totalIncome > 0 {
+		savingsRate = (balance / totalIncome) * 100
+	}
+	nonEssentialExpense := totalExpense - essentialExpense
+
+	// Устанавливаем заголовки для скачивания файла
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=report_%s.csv", time.Now().Format("20060102_150405")))
+
+	// Создаем CSV writer
+	writer := csv.NewWriter(c.Writer)
+	defer writer.Flush()
+
+	// Записываем метаданные
+	writer.Write([]string{"#", "ФИНАНСОВЫЙ ОТЧЕТ"})
+	writer.Write([]string{"#", "Дата создания:", time.Now().Format("2006-01-02 15:04:05")})
+	if month != "" {
+		writer.Write([]string{"#", "Период:", month})
+	} else if startDate != "" && endDate != "" {
+		writer.Write([]string{"#", "Период:", fmt.Sprintf("%s - %s", startDate, endDate)})
+	} else {
+		writer.Write([]string{"#", "Период:", "Все время"})
+	}
+	writer.Write([]string{""})
+
+	// Записываем сводку
+	writer.Write([]string{"#", "СВОДКА"})
+	writer.Write([]string{"Доходы", fmt.Sprintf("%.2f", totalIncome)})
+	writer.Write([]string{"Расходы", fmt.Sprintf("%.2f", totalExpense)})
+	writer.Write([]string{"Обязательные расходы", fmt.Sprintf("%.2f", essentialExpense)})
+	writer.Write([]string{"Необязательные расходы", fmt.Sprintf("%.2f", nonEssentialExpense)})
+	writer.Write([]string{"Баланс", fmt.Sprintf("%.2f", balance)})
+	writer.Write([]string{"Норма сбережений (%)", fmt.Sprintf("%.2f", savingsRate)})
+	writer.Write([]string{""})
+
+	// Записываем расходы по категориям
+	if len(categoryData) > 0 {
+		writer.Write([]string{"#", "РАСХОДЫ ПО КАТЕГОРИЯМ"})
+		writer.Write([]string{"Категория", "Сумма"})
+		for _, item := range categoryData {
+			category := item.Category
+			if category == "" {
+				category = "Другое"
+			}
+			writer.Write([]string{category, fmt.Sprintf("%.2f", item.Amount)})
+		}
+		writer.Write([]string{""})
+	}
+
+	// Записываем заголовки транзакций
+	writer.Write([]string{"#", "ДЕТАЛЬНЫЕ ТРАНЗАКЦИИ"})
+	headers := []string{"Дата", "Сумма", "Тип", "Описание", "Номер операции", "Категория", "Обязательный"}
+	writer.Write(headers)
 
 	// Записываем транзакции
 	for _, tx := range transactions {
