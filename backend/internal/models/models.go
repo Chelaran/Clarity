@@ -69,3 +69,12 @@ type Deposit struct {
 	TermMonths  int        `json:"term_months"`                   // Срок в месяцах (0 = до востребования)
 	CreatedAt   time.Time  `json:"created_at"`
 }
+
+// ChatMessage - сообщения в AI-чате
+type ChatMessage struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	Role      string    `gorm:"not null" json:"role"` // "user" или "assistant"
+	Content   string    `gorm:"type:text;not null" json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}

@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string) *gin.Engine {
+func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string, yandexGPT *service.YandexGPTClient) *gin.Engine {
 	r := gin.Default()
 
 	// Health check
@@ -32,6 +32,7 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string) *gin
 	healthScoreHandler := handlers.NewHealthScoreHandler(repo)
 	investmentHandler := handlers.NewInvestmentHandler(repo)
 	depositHandler := handlers.NewDepositHandler(repo)
+	chatHandler := handlers.NewChatHandler(repo, yandexGPT)
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware(jwtSecret))
 	{
@@ -60,6 +61,10 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string) *gin
 		protected.GET("/health-score/essential-details", healthScoreHandler.GetEssentialRatioDetails)
 		protected.GET("/health-score/investment-details", healthScoreHandler.GetInvestmentDetails)
 		protected.GET("/health-score/deposit-details", healthScoreHandler.GetDepositDetails)
+
+		// AI Chat
+		protected.POST("/chat", chatHandler.SendMessage)
+		protected.GET("/chat/history", chatHandler.GetHistory)
 	}
 
 	return r

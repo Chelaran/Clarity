@@ -20,7 +20,7 @@ func NewDB(dsn string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return db, db.AutoMigrate(&models.User{}, &models.Transaction{}, &models.Investment{}, &models.Deposit{})
+	return db, db.AutoMigrate(&models.User{}, &models.Transaction{}, &models.Investment{}, &models.Deposit{}, &models.ChatMessage{})
 }
 
 func New(db *gorm.DB) *Repository {
@@ -153,4 +153,22 @@ func (r *Repository) UpdateDeposit(dep *models.Deposit) error {
 
 func (r *Repository) DeleteDeposit(id, userID uint) error {
 	return r.db.Where("id = ? AND user_id = ?", id, userID).Delete(&models.Deposit{}).Error
+}
+
+// ChatMessage CRUD
+func (r *Repository) CreateChatMessage(msg *models.ChatMessage) error {
+	return r.db.Create(msg).Error
+}
+
+func (r *Repository) GetChatHistory(userID uint, limit int) ([]models.ChatMessage, error) {
+	var messages []models.ChatMessage
+	err := r.db.Where("user_id = ?", userID).
+		Order("created_at desc").
+		Limit(limit).
+		Find(&messages).Error
+	// Переворачиваем, чтобы старые сообщения были первыми
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+	return messages, err
 }

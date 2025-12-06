@@ -12,6 +12,7 @@ import (
 	"clarity/internal/api"
 	"clarity/internal/config"
 	"clarity/internal/repository"
+	"clarity/internal/service"
 
 	logger "github.com/Chelaran/yagalog"
 )
@@ -30,7 +31,8 @@ func main() {
 	}
 
 	repo := repository.New(db)
-	router := api.NewRouter(repo, cfg.JWTSecret, cfg.MLServiceURL)
+	yandexGPT := service.NewYandexGPTClient(cfg.YandexGPTAPIKey, cfg.YandexGPTFolderID, cfg.YandexGPTModelURI)
+	router := api.NewRouter(repo, cfg.JWTSecret, cfg.MLServiceURL, yandexGPT)
 
 	addr := ":" + cfg.Port
 	server := &http.Server{
