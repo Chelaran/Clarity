@@ -23,7 +23,8 @@ type SummaryResponse struct {
 	Month               string             `json:"month"`
 	TotalIncome         float64            `json:"total_income"`
 	TotalExpense        float64            `json:"total_expense"`
-	Balance             float64            `json:"balance"`
+	Balance             float64            `json:"balance"`             // Баланс за месяц
+	TotalBalance        float64            `json:"total_balance"`      // Общий баланс (сумма всех транзакций)
 	SavingsRate         float64            `json:"savings_rate"`
 	ByCategory          map[string]float64 `json:"by_category"`
 	EssentialExpense    float64            `json:"essential_expense"`
@@ -98,11 +99,21 @@ func (h *AnalyticsHandler) Summary(c *gin.Context) {
 		savingsRate = (balance / totalIncome) * 100
 	}
 
+	// Общий баланс (сумма всех транзакций за все время)
+	// Расходы хранятся как отрицательные числа (-350), доходы - положительные (3506)
+	// Поэтому просто суммируем все amount: 3506 + (-350) = 3156
+	var totalBalance float64
+	db.Model(&models.Transaction{}).
+		Where("user_id = ?", userID).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&totalBalance)
+
 	c.JSON(http.StatusOK, SummaryResponse{
 		Month:               month,
 		TotalIncome:         totalIncome,
 		TotalExpense:        totalExpense,
 		Balance:             balance,
+		TotalBalance:        totalBalance,
 		SavingsRate:         savingsRate,
 		ByCategory:          byCategory,
 		EssentialExpense:    essentialExpense,

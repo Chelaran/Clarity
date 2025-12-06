@@ -4,6 +4,7 @@ import { ExpenseChart } from "@/components/expense-chart"
 import { TransactionHistory } from "@/components/transaction-history"
 import { Forecast } from "@/components/forecast"
 import { SavingsGoal } from "@/components/savings-goal"
+import { TotalBalance } from "@/components/total-balance"
 import { SmartAdvice } from "@/components/smart-advice"
 import { QuickActions } from "@/components/quick-actions"
 
@@ -26,6 +27,7 @@ export default function HomePage() {
           {/* Right column - 1 column width */}
           <div className="space-y-6">
             <SavingsGoal />
+            <TotalBalance />
             <SmartAdvice />
             <QuickActions />
           </div>

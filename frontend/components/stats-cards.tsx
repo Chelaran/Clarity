@@ -11,7 +11,8 @@ interface SummaryData {
   month: string
   total_income: number
   total_expense: number
-  balance: number
+  balance: number // Баланс за месяц
+  total_balance: number // Общий баланс (сумма всех транзакций)
   savings_rate: number
   essential_expense: number
   non_essential_expense: number
@@ -123,7 +124,7 @@ export function StatsCards() {
 
   const incomeChange = calculateChange(summary.total_income, prevSummary?.total_income)
   const expenseChange = calculateChange(summary.total_expense, prevSummary?.total_expense)
-  const balance = summary.balance
+  const balance = summary.balance // Баланс за месяц
   const availableToSpend = Math.max(0, balance * 0.3) // 30% от остатка можно потратить
 
   return (
