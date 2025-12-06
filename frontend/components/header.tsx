@@ -20,6 +20,7 @@ export function Header() {
   const navItems = [
     { href: "/", label: "Обзор", icon: "📊" },
     { href: "/operations", label: "Операции", icon: "📋" },
+    { href: "/investments-deposits", label: "Инвестиции", icon: "💰" },
     { href: "/ai-assistant", label: "AI-помощник", icon: "✨" },
     { href: "/analytics", label: "Аналитика", icon: null },
   ]
