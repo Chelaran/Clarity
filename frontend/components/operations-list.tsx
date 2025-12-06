@@ -5,11 +5,19 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { Loader2 } from "lucide-react"
+import { Loader2, Calendar, Tag, FileText, Hash, CreditCard } from "lucide-react"
 import { DateRange } from "react-day-picker"
 import { format } from "date-fns"
+import { ru } from "date-fns/locale"
 import { useRefresh } from "@/components/refresh-context"
 import { motion, AnimatePresence } from "framer-motion"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 // --- ИНТЕРФЕЙСЫ ---
 interface Transaction {
@@ -35,6 +43,8 @@ interface Operation {
   amount: number
   card: string
   icon: string
+  // Добавляем ссылку на оригинальную транзакцию для деталей
+  transaction?: Transaction
 }
 
 // --- ХЕЛПЕРЫ ---
@@ -99,6 +109,7 @@ const transactionToOperation = (tx: Transaction): Operation => {
     amount: tx.amount,
     card: tx.ref_no ? `REF • ${tx.ref_no.slice(-4)}` : "CARD • 4291",
     icon,
+    transaction: tx, // Сохраняем оригинальную транзакцию
   }
 }
 
@@ -121,6 +132,7 @@ export function OperationsList({ activeFilter, searchQuery, dateRange }: Operati
   const [error, setError] = useState<string | null>(null)
   const [offset, setOffset] = useState(0)
   const [hasMore, setHasMore] = useState(true)
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
   const limit = 20
 
   const fetchTransactions = useCallback(async (reset = false) => {
@@ -301,6 +313,11 @@ export function OperationsList({ activeFilter, searchQuery, dateRange }: Operati
               exit="exit"
               whileHover={{ x: 4, transition: { duration: 0.2 } }}
               className="p-6 hover:bg-muted/50 transition-colors cursor-pointer"
+              onClick={() => {
+                if (operation.transaction) {
+                  setSelectedTransaction(operation.transaction)
+                }
+              }}
             >
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-[120px]">
@@ -335,7 +352,7 @@ export function OperationsList({ activeFilter, searchQuery, dateRange }: Operati
                 <div className="text-xs text-muted-foreground">{operation.card}</div>
               </div>
             </div>
-          </motion.div>
+            </motion.div>
           ))}
         </AnimatePresence>
       </motion.div>
@@ -359,6 +376,124 @@ export function OperationsList({ activeFilter, searchQuery, dateRange }: Operati
           </Button>
         </div>
       )}
+
+      {/* Модальное окно с деталями транзакции */}
+      <Dialog open={!!selectedTransaction} onOpenChange={(open) => !open && setSelectedTransaction(null)}>
+        <DialogContent className="max-w-2xl">
+          {selectedTransaction && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl">
+                  {selectedTransaction.type === "income" ? "Доход" : "Расход"}
+                </DialogTitle>
+                <DialogDescription>
+                  Детальная информация о транзакции
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 py-4">
+                {/* Основная информация */}
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center text-3xl">
+                      {categoryIcons[selectedTransaction.category] || categoryIcons[selectedTransaction.category.toLowerCase()] || "📝"}
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-semibold">
+                        {selectedTransaction.description || selectedTransaction.category || "Без описания"}
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {selectedTransaction.category || "Другое"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-3xl font-bold ${selectedTransaction.type === "income" ? "text-primary" : "text-foreground"}`}>
+                      {selectedTransaction.type === "income" ? "+" : "-"}
+                      {Math.abs(selectedTransaction.amount).toLocaleString("ru-RU")} ₽
+                    </div>
+                    <Badge 
+                      variant={selectedTransaction.type === "income" ? "default" : "secondary"}
+                      className="mt-2"
+                    >
+                      {selectedTransaction.type === "income" ? "Доход" : "Расход"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Детали */}
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="w-4 h-4" />
+                      <span>Дата транзакции</span>
+                    </div>
+                    <p className="font-medium">
+                      {format(new Date(selectedTransaction.date), "dd MMMM yyyy", { locale: ru })}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="w-4 h-4" />
+                      <span>Время создания</span>
+                    </div>
+                    <p className="font-medium">
+                      {format(new Date(selectedTransaction.created_at), "dd MMMM yyyy, HH:mm", { locale: ru })}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Tag className="w-4 h-4" />
+                      <span>Категория</span>
+                    </div>
+                    <p className="font-medium">{selectedTransaction.category || "Не указана"}</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Tag className="w-4 h-4" />
+                      <span>Тип траты</span>
+                    </div>
+                    <p className="font-medium">
+                      {selectedTransaction.is_essential ? "Обязательное" : "Необязательное"}
+                    </p>
+                  </div>
+
+                  {selectedTransaction.ref_no && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Hash className="w-4 h-4" />
+                        <span>Референсный номер</span>
+                      </div>
+                      <p className="font-medium font-mono text-sm">{selectedTransaction.ref_no}</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CreditCard className="w-4 h-4" />
+                      <span>ID транзакции</span>
+                    </div>
+                    <p className="font-medium font-mono text-sm">#{selectedTransaction.id}</p>
+                  </div>
+                </div>
+
+                {selectedTransaction.description && (
+                  <div className="pt-4 border-t border-border">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                      <FileText className="w-4 h-4" />
+                      <span>Описание</span>
+                    </div>
+                    <p className="text-foreground">{selectedTransaction.description}</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </motion.div>
   )
 }
