@@ -50,12 +50,12 @@ func (h *DepositHandler) Create(c *gin.Context) {
 	}
 
 	dep := &models.Deposit{
-		UserID:      userID,
-		Amount:      req.Amount,
+		UserID:       userID,
+		Amount:       req.Amount,
 		InterestRate: req.InterestRate,
-		Description: req.Description,
-		TermMonths:  req.TermMonths,
-		CreatedAt:   time.Now(),
+		Description:  req.Description,
+		TermMonths:   req.TermMonths,
+		CreatedAt:    time.Now(),
 	}
 
 	if req.OpenDate != "" {
@@ -182,4 +182,3 @@ func (h *DepositHandler) Delete(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Deposit deleted"})
 }
-

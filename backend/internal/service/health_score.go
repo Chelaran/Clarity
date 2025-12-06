@@ -18,52 +18,52 @@ func NewHealthScoreService(db *gorm.DB) *HealthScoreService {
 }
 
 type HealthScoreResult struct {
-	Score           float64            `json:"score"`
-	Grade           string             `json:"grade"`
-	Components      HealthComponents   `json:"components"`
-	EmergencyFundMonths float64        `json:"emergency_fund_months"`
-	Trend           TrendAnalysis      `json:"trend"`           // Прогноз тренда
-	Insights        []Insight          `json:"insights"`        // Конкретные рекомендации
-	Benchmark       BenchmarkComparison `json:"benchmark"`      // Сравнение с нормами
+	Score               float64             `json:"score"`
+	Grade               string              `json:"grade"`
+	Components          HealthComponents    `json:"components"`
+	EmergencyFundMonths float64             `json:"emergency_fund_months"`
+	Trend               TrendAnalysis       `json:"trend"`     // Прогноз тренда
+	Insights            []Insight           `json:"insights"`  // Конкретные рекомендации
+	Benchmark           BenchmarkComparison `json:"benchmark"` // Сравнение с нормами
 }
 
 type TrendAnalysis struct {
-	Direction    string  `json:"direction"`     // "improving", "declining", "stable"
+	Direction      string  `json:"direction"`       // "improving", "declining", "stable"
 	ProjectedScore float64 `json:"projected_score"` // Прогноз на следующий месяц
-	Confidence   float64 `json:"confidence"`    // Уверенность в прогнозе (0-100)
+	Confidence     float64 `json:"confidence"`      // Уверенность в прогнозе (0-100)
 }
 
 type Insight struct {
-	Type        string  `json:"type"`         // "warning", "opportunity", "achievement"
-	Component   string  `json:"component"`    // "savings_rate", "emergency_fund", etc.
-	Message     string  `json:"message"`      // Конкретный совет
-	Impact      float64 `json:"impact"`       // Потенциальное улучшение score
+	Type      string  `json:"type"`      // "warning", "opportunity", "achievement"
+	Component string  `json:"component"` // "savings_rate", "emergency_fund", etc.
+	Message   string  `json:"message"`   // Конкретный совет
+	Impact    float64 `json:"impact"`    // Потенциальное улучшение score
 }
 
 type BenchmarkComparison struct {
-	SavingsRateBenchmark    float64 `json:"savings_rate_benchmark"`     // Норма для пользователя
-	EmergencyFundBenchmark  float64 `json:"emergency_fund_benchmark"`   // Рекомендуемый размер
-	StabilityBenchmark      float64 `json:"stability_benchmark"`         // Целевой CV
+	SavingsRateBenchmark   float64 `json:"savings_rate_benchmark"`   // Норма для пользователя
+	EmergencyFundBenchmark float64 `json:"emergency_fund_benchmark"` // Рекомендуемый размер
+	StabilityBenchmark     float64 `json:"stability_benchmark"`      // Целевой CV
 }
 
 type HealthComponents struct {
-	SavingsRate      ComponentScore `json:"savings_rate"`
-	EmergencyFund    ComponentScore `json:"emergency_fund"`
+	SavingsRate       ComponentScore `json:"savings_rate"`
+	EmergencyFund     ComponentScore `json:"emergency_fund"`
 	SpendingStability ComponentScore `json:"spending_stability"`
-	EssentialRatio   ComponentScore `json:"essential_ratio"`
+	EssentialRatio    ComponentScore `json:"essential_ratio"`
 }
 
 type ComponentScore struct {
-	Value       float64          `json:"value"`
-	Score       float64          `json:"score"`
-	Weight      float64          `json:"weight"`
-	Details     *ComponentDetails `json:"details,omitempty"` // Детализация компонента
+	Value   float64           `json:"value"`
+	Score   float64           `json:"score"`
+	Weight  float64           `json:"weight"`
+	Details *ComponentDetails `json:"details,omitempty"` // Детализация компонента
 }
 
 type ComponentDetails struct {
-	TotalAmount   float64 `json:"total_amount"`   // Общая сумма
-	Recommendation string `json:"recommendation"` // Рекомендация
-	HasMoreDetails bool   `json:"has_more_details"` // Есть ли подробная информация
+	TotalAmount    float64 `json:"total_amount"`     // Общая сумма
+	Recommendation string  `json:"recommendation"`   // Рекомендация
+	HasMoreDetails bool    `json:"has_more_details"` // Есть ли подробная информация
 }
 
 func (s *HealthScoreService) Calculate(userID uint, month string) (*HealthScoreResult, error) {
@@ -143,44 +143,44 @@ func (s *HealthScoreService) Calculate(userID uint, month string) (*HealthScoreR
 	trend := s.analyzeTrend(userID, monthTime, totalScore)
 
 	// Генерация инсайтов
-	insights := s.generateInsights(savingsRate, emergencyFundMonths, stabilityScore, essentialRatio, 
+	insights := s.generateInsights(savingsRate, emergencyFundMonths, stabilityScore, essentialRatio,
 		savingsRateScore, emergencyFundScore, essentialRatioScore)
 
 	// Адаптивные бенчмарки на основе истории пользователя
 	benchmark := s.calculateBenchmarks(userID, monthTime)
 
 	return &HealthScoreResult{
-		Score:            math.Round(totalScore*100) / 100,
-		Grade:            grade,
+		Score:               math.Round(totalScore*100) / 100,
+		Grade:               grade,
 		EmergencyFundMonths: math.Round(emergencyFundMonths*100) / 100,
 		Components: HealthComponents{
 			SavingsRate: ComponentScore{
-				Value:  math.Round(savingsRate*100) / 100,
-				Score:  savingsRateScore,
-				Weight: 0.30,
+				Value:   math.Round(savingsRate*100) / 100,
+				Score:   savingsRateScore,
+				Weight:  0.30,
 				Details: s.getIncomeDetails(userID, monthIncome, savingsRate, savingsRateScore),
 			},
 			EmergencyFund: ComponentScore{
-				Value:  emergencyFundMonths,
-				Score:  emergencyFundScore,
-				Weight: 0.25,
+				Value:   emergencyFundMonths,
+				Score:   emergencyFundScore,
+				Weight:  0.25,
 				Details: s.getSavingsDetails(userID, totalBalance, emergencyFundMonths, emergencyFundScore),
 			},
 			SpendingStability: ComponentScore{
-				Value:  stabilityScore,
-				Score:  stabilityScore,
-				Weight: 0.25,
+				Value:   stabilityScore,
+				Score:   stabilityScore,
+				Weight:  0.25,
 				Details: s.getExpenseDetails(userID, monthExpense, monthTime, stabilityScore),
 			},
 			EssentialRatio: ComponentScore{
-				Value:  math.Round(essentialRatio*100) / 100,
-				Score:  essentialRatioScore,
-				Weight: 0.20,
+				Value:   math.Round(essentialRatio*100) / 100,
+				Score:   essentialRatioScore,
+				Weight:  0.20,
 				Details: s.getEssentialRatioDetails(monthExpense, monthEssential, essentialRatio, essentialRatioScore),
 			},
 		},
-		Trend:    trend,
-		Insights: insights,
+		Trend:     trend,
+		Insights:  insights,
 		Benchmark: benchmark,
 	}, nil
 }
@@ -314,7 +314,7 @@ func normalizeEssentialRatio(ratio float64) float64 {
 	mu := 55.0
 	sigma := 10.0
 	gaussian := math.Exp(-0.5 * math.Pow((ratio-mu)/sigma, 2))
-	
+
 	// Нормализуем к 0-100, где 55% = 100 points
 	return gaussian * 100.0
 }
@@ -361,9 +361,9 @@ func (s *HealthScoreService) analyzeTrend(userID uint, monthTime time.Time, curr
 			savingsRate = ((income - expense) / income) * 100
 		}
 		savingsScore := normalizeSavingsRate(savingsRate)
-		
+
 		// Простой score для тренда (только savings rate как индикатор)
-		simpleScore := savingsScore * 0.5 + 50.0 // Базовая оценка
+		simpleScore := savingsScore*0.5 + 50.0 // Базовая оценка
 		scores = append(scores, simpleScore)
 	}
 
@@ -374,7 +374,7 @@ func (s *HealthScoreService) analyzeTrend(userID uint, monthTime time.Time, curr
 		return TrendAnalysis{
 			Direction:      "stable",
 			ProjectedScore: currentScore,
-			Confidence:    0.0,
+			Confidence:     0.0,
 		}
 	}
 
@@ -396,7 +396,7 @@ func (s *HealthScoreService) analyzeTrend(userID uint, monthTime time.Time, curr
 		return TrendAnalysis{
 			Direction:      "stable",
 			ProjectedScore: currentScore,
-			Confidence:    0.0,
+			Confidence:     0.0,
 		}
 	}
 
@@ -415,7 +415,7 @@ func (s *HealthScoreService) analyzeTrend(userID uint, monthTime time.Time, curr
 		ssTotal += math.Pow(y-meanY, 2)
 		ssResidual += math.Pow(y-predicted, 2)
 	}
-	
+
 	// Защита от деления на ноль
 	rSquared := 0.0
 	if ssTotal > 0.001 {
@@ -562,7 +562,7 @@ func (s *HealthScoreService) calculateBenchmarks(userID uint, monthTime time.Tim
 		return BenchmarkComparison{
 			SavingsRateBenchmark:   20.0,
 			EmergencyFundBenchmark: 6.0,
-			StabilityBenchmark:      20.0,
+			StabilityBenchmark:     20.0,
 		}
 	}
 
@@ -574,14 +574,14 @@ func (s *HealthScoreService) calculateBenchmarks(userID uint, monthTime time.Tim
 	return BenchmarkComparison{
 		SavingsRateBenchmark:   math.Max(20.0, avgSavingsRate*1.1),
 		EmergencyFundBenchmark: math.Max(6.0, avgEmergencyMonths*1.1),
-		StabilityBenchmark:      math.Max(20.0, avgCV*0.9),
+		StabilityBenchmark:     math.Max(20.0, avgCV*0.9),
 	}
 }
 
 // Детализация компонента: Доходы
 func (s *HealthScoreService) getIncomeDetails(userID uint, totalIncome, savingsRate, score float64) *ComponentDetails {
 	recommendation := ""
-	
+
 	if savingsRate < 10 {
 		recommendation = "Рекомендуется увеличить накопления до 10% от дохода. Рассмотрите возможность сокращения необязательных расходов или увеличения доходов."
 	} else if savingsRate >= 20 {
@@ -602,7 +602,7 @@ func (s *HealthScoreService) getIncomeDetails(userID uint, totalIncome, savingsR
 // Детализация компонента: Свободные средства (Emergency Fund)
 func (s *HealthScoreService) getSavingsDetails(userID uint, totalBalance, emergencyMonths, score float64) *ComponentDetails {
 	recommendation := ""
-	
+
 	if emergencyMonths < 3 {
 		recommendation = "Финансовая подушка критически мала. Рекомендуется накопить минимум 3 месяца расходов для финансовой безопасности."
 	} else if emergencyMonths >= 6 {
@@ -621,7 +621,7 @@ func (s *HealthScoreService) getSavingsDetails(userID uint, totalBalance, emerge
 // Детализация компонента: Расходы
 func (s *HealthScoreService) getExpenseDetails(userID uint, totalExpense float64, monthTime time.Time, stabilityScore float64) *ComponentDetails {
 	recommendation := ""
-	
+
 	if stabilityScore < 50 {
 		recommendation = "Расходы нестабильны. Старайтесь планировать бюджет для более равномерных трат. Это поможет лучше контролировать финансы."
 	} else if stabilityScore >= 75 {
@@ -640,7 +640,7 @@ func (s *HealthScoreService) getExpenseDetails(userID uint, totalExpense float64
 // Детализация компонента: Essential Ratio (баланс обязательных/необязательных)
 func (s *HealthScoreService) getEssentialRatioDetails(totalExpense, essentialExpense, essentialRatio, score float64) *ComponentDetails {
 	recommendation := ""
-	
+
 	if essentialRatio < 50 {
 		recommendation = "Слишком много необязательных расходов. Оптимально 50-60% обязательных трат. Рассмотрите возможность сокращения развлечений и необязательных покупок."
 	} else if essentialRatio > 80 {
@@ -658,63 +658,62 @@ func (s *HealthScoreService) getEssentialRatioDetails(totalExpense, essentialExp
 	}
 }
 
-
 // Детальные структуры для эндпоинтов
 type IncomeDetailsResponse struct {
-	TotalAmount   float64            `json:"total_amount"`
-	Recommendation string            `json:"recommendation"`
-	Breakdown     []CategoryBreakdown `json:"breakdown"`
+	TotalAmount    float64             `json:"total_amount"`
+	Recommendation string              `json:"recommendation"`
+	Breakdown      []CategoryBreakdown `json:"breakdown"`
 }
 
 type ExpenseDetailsResponse struct {
-	TotalAmount   float64            `json:"total_amount"`
-	Essential     float64            `json:"essential"`
-	NonEssential  float64            `json:"non_essential"`
-	Recommendation string            `json:"recommendation"`
-	Breakdown     []CategoryBreakdown `json:"breakdown"`
+	TotalAmount    float64             `json:"total_amount"`
+	Essential      float64             `json:"essential"`
+	NonEssential   float64             `json:"non_essential"`
+	Recommendation string              `json:"recommendation"`
+	Breakdown      []CategoryBreakdown `json:"breakdown"`
 }
 
 type SavingsDetailsResponse struct {
-	TotalBalance      float64 `json:"total_balance"`
+	TotalBalance        float64 `json:"total_balance"`
 	EmergencyFundMonths float64 `json:"emergency_fund_months"`
-	Recommendation    string  `json:"recommendation"`
+	Recommendation      string  `json:"recommendation"`
 }
 
 type EssentialRatioDetailsResponse struct {
-	TotalExpense    float64 `json:"total_expense"`
-	EssentialExpense float64 `json:"essential_expense"`
+	TotalExpense        float64 `json:"total_expense"`
+	EssentialExpense    float64 `json:"essential_expense"`
 	NonEssentialExpense float64 `json:"non_essential_expense"`
-	Ratio           float64 `json:"ratio"`
-	Recommendation  string  `json:"recommendation"`
+	Ratio               float64 `json:"ratio"`
+	Recommendation      string  `json:"recommendation"`
 }
 
 type InvestmentDetailsResponse struct {
-	TotalAmount    float64 `json:"total_amount"`
-	CurrentValue   float64 `json:"current_value"`   // Текущая стоимость (если указана)
-	Profit         float64 `json:"profit"`           // Прибыль (current_value - total_amount)
-	ProfitPercent  float64 `json:"profit_percent"`   // Процент прибыли
-	Recommendation string  `json:"recommendation"`
+	TotalAmount    float64               `json:"total_amount"`
+	CurrentValue   float64               `json:"current_value"`  // Текущая стоимость (если указана)
+	Profit         float64               `json:"profit"`         // Прибыль (current_value - total_amount)
+	ProfitPercent  float64               `json:"profit_percent"` // Процент прибыли
+	Recommendation string                `json:"recommendation"`
 	Breakdown      []InvestmentBreakdown `json:"breakdown"`
 }
 
 type DepositDetailsResponse struct {
-	TotalAmount    float64 `json:"total_amount"`
-	TotalInterest  float64 `json:"total_interest"`  // Общий процентный доход
-	Recommendation string  `json:"recommendation"`
+	TotalAmount    float64            `json:"total_amount"`
+	TotalInterest  float64            `json:"total_interest"` // Общий процентный доход
+	Recommendation string             `json:"recommendation"`
 	Breakdown      []DepositBreakdown `json:"breakdown"`
 }
 
 type InvestmentBreakdown struct {
-	Type   string  `json:"type"`
-	Amount float64 `json:"amount"`
+	Type    string  `json:"type"`
+	Amount  float64 `json:"amount"`
 	Percent float64 `json:"percent"`
 }
 
 type DepositBreakdown struct {
-	Description string  `json:"description"`
-	Amount      float64 `json:"amount"`
+	Description  string  `json:"description"`
+	Amount       float64 `json:"amount"`
 	InterestRate float64 `json:"interest_rate"`
-	Percent     float64 `json:"percent"`
+	Percent      float64 `json:"percent"`
 }
 
 type CategoryBreakdown struct {
@@ -902,9 +901,9 @@ func (s *HealthScoreService) GetSavingsDetails(userID uint) (*SavingsDetailsResp
 	}
 
 	return &SavingsDetailsResponse{
-		TotalBalance:       math.Round(totalBalance*100) / 100,
+		TotalBalance:        math.Round(totalBalance*100) / 100,
 		EmergencyFundMonths: math.Round(emergencyFundMonths*100) / 100,
-		Recommendation:     recommendation,
+		Recommendation:      recommendation,
 	}, nil
 }
 
@@ -943,10 +942,10 @@ func (s *HealthScoreService) GetEssentialRatioDetails(userID uint, month string)
 
 	return &EssentialRatioDetailsResponse{
 		TotalExpense:        math.Round(totalExpense*100) / 100,
-		EssentialExpense:   math.Round(essentialExpense*100) / 100,
+		EssentialExpense:    math.Round(essentialExpense*100) / 100,
 		NonEssentialExpense: math.Round(nonEssentialExpense*100) / 100,
-		Ratio:              math.Round(ratio*100) / 100,
-		Recommendation:     recommendation,
+		Ratio:               math.Round(ratio*100) / 100,
+		Recommendation:      recommendation,
 	}, nil
 }
 
@@ -969,7 +968,7 @@ func formatMonths(months float64) string {
 // GetInvestmentDetails - детальная информация об инвестициях
 func (s *HealthScoreService) GetInvestmentDetails(userID uint) (*InvestmentDetailsResponse, error) {
 	var totalAmount, currentValue float64
-	
+
 	// Сумма всех инвестиций
 	s.db.Model(&models.Investment{}).
 		Where("user_id = ?", userID).
@@ -1006,8 +1005,8 @@ func (s *HealthScoreService) GetInvestmentDetails(userID uint) (*InvestmentDetai
 			percent = (stat.Amount / totalAmount) * 100
 		}
 		breakdown = append(breakdown, InvestmentBreakdown{
-			Type:   stat.Type,
-			Amount: math.Round(stat.Amount*100) / 100,
+			Type:    stat.Type,
+			Amount:  math.Round(stat.Amount*100) / 100,
 			Percent: math.Round(percent*100) / 100,
 		})
 	}
@@ -1027,7 +1026,7 @@ func (s *HealthScoreService) GetInvestmentDetails(userID uint) (*InvestmentDetai
 		TotalAmount:    math.Round(totalAmount*100) / 100,
 		CurrentValue:   math.Round(currentValue*100) / 100,
 		Profit:         math.Round(profit*100) / 100,
-		ProfitPercent: math.Round(profitPercent*100) / 100,
+		ProfitPercent:  math.Round(profitPercent*100) / 100,
 		Recommendation: recommendation,
 		Breakdown:      breakdown,
 	}, nil
@@ -1036,7 +1035,7 @@ func (s *HealthScoreService) GetInvestmentDetails(userID uint) (*InvestmentDetai
 // GetDepositDetails - детальная информация о вкладах
 func (s *HealthScoreService) GetDepositDetails(userID uint) (*DepositDetailsResponse, error) {
 	var totalAmount float64
-	
+
 	// Сумма всех активных вкладов (не закрытых)
 	s.db.Model(&models.Deposit{}).
 		Where("user_id = ? AND close_date IS NULL", userID).
@@ -1046,7 +1045,7 @@ func (s *HealthScoreService) GetDepositDetails(userID uint) (*DepositDetailsResp
 	// Расчет процентного дохода (упрощенный: сумма * процент / 100)
 	var deposits []models.Deposit
 	s.db.Where("user_id = ? AND close_date IS NULL", userID).Find(&deposits)
-	
+
 	totalInterest := 0.0
 	for _, deposit := range deposits {
 		if deposit.InterestRate > 0 && deposit.TermMonths > 0 {
@@ -1074,10 +1073,10 @@ func (s *HealthScoreService) GetDepositDetails(userID uint) (*DepositDetailsResp
 			desc = "Вклад"
 		}
 		breakdown = append(breakdown, DepositBreakdown{
-			Description: desc,
-			Amount:      math.Round(deposit.Amount*100) / 100,
+			Description:  desc,
+			Amount:       math.Round(deposit.Amount*100) / 100,
 			InterestRate: math.Round(deposit.InterestRate*100) / 100,
-			Percent:     math.Round(percent*100) / 100,
+			Percent:      math.Round(percent*100) / 100,
 		})
 	}
 

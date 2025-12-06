@@ -30,8 +30,8 @@ type CategorizeRequest struct {
 }
 
 type CategorizeResponse struct {
-	Category    string  `json:"category"`
-	Confidence  float64 `json:"confidence"`
+	Category   string  `json:"category"`
+	Confidence float64 `json:"confidence"`
 }
 
 // Categorize - устаревший метод, используйте CategorizeWithDate
@@ -74,4 +74,3 @@ func (c *MLClient) CategorizeWithDate(refNo string, amount float64, date time.Ti
 
 	return &result, nil
 }
-

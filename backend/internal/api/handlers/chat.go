@@ -15,8 +15,8 @@ import (
 )
 
 type ChatHandler struct {
-	repo         *repository.Repository
-	yandexGPT    *service.YandexGPTClient
+	repo          *repository.Repository
+	yandexGPT     *service.YandexGPTClient
 	healthService *service.HealthScoreService
 }
 
@@ -58,7 +58,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 
 	// Собираем контекст о финансах пользователя
 	context := h.buildFinancialContext(userID)
-	
+
 	// Если контекст пустой, добавляем базовую информацию
 	if context == "" {
 		context = "У пользователя пока нет финансовых данных. Помоги ему начать работу с системой."
@@ -66,10 +66,10 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 
 	// Получаем историю чата (последние 10 сообщений)
 	history, _ := h.repo.GetChatHistory(userID, 10)
-	
+
 	// Формируем сообщения для YandexGPT
 	messages := h.buildMessages(context, history, req.Message)
-	
+
 	// Проверяем, что есть хотя бы одно валидное сообщение
 	if len(messages) == 0 || messages[0].Text == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не удалось сформировать запрос к AI"})
@@ -150,20 +150,20 @@ func (h *ChatHandler) buildFinancialContext(userID uint) string {
 		Scan(&totalExpense)
 
 	balance := totalIncome - totalExpense
-	
+
 	// Общий баланс (свободные средства) - сумма всех доходов минус расходы
 	var totalBalance float64
 	db.Model(&models.Transaction{}).
 		Where("user_id = ?", userID).
 		Select("COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0)").
 		Scan(&totalBalance)
-	
+
 	context.WriteString(fmt.Sprintf("Финансы за %s:\n", month))
 	context.WriteString(fmt.Sprintf("- Доходы: %.2f₽\n", totalIncome))
 	context.WriteString(fmt.Sprintf("- Расходы: %.2f₽\n", totalExpense))
 	context.WriteString(fmt.Sprintf("- Баланс за месяц: %.2f₽\n", balance))
 	context.WriteString(fmt.Sprintf("- Свободные средства (общий баланс): %.2f₽\n\n", totalBalance))
-	
+
 	// Разбивка расходов по категориям за месяц
 	var categoryData []struct {
 		Category string
@@ -176,7 +176,7 @@ func (h *ChatHandler) buildFinancialContext(userID uint) string {
 		Group("category").
 		Order("amount desc").
 		Find(&categoryData)
-	
+
 	if len(categoryData) > 0 {
 		context.WriteString("Расходы по категориям за месяц:\n")
 		for _, item := range categoryData {
@@ -184,30 +184,30 @@ func (h *ChatHandler) buildFinancialContext(userID uint) string {
 			if totalExpense > 0 {
 				percent = (item.Amount / totalExpense) * 100
 			}
-			context.WriteString(fmt.Sprintf("- %s: %.2f₽ (%.1f%%, %d транзакций)\n", 
+			context.WriteString(fmt.Sprintf("- %s: %.2f₽ (%.1f%%, %d транзакций)\n",
 				item.Category, item.Amount, percent, item.Count))
 		}
 		context.WriteString("\n")
 	}
-	
+
 	// Сравнение с предыдущим месяцем
 	prevMonthTime := monthTime.AddDate(0, -1, 0)
 	prevMonth := prevMonthTime.Format("2006-01")
 	prevStartDate := prevMonth + "-01"
 	prevLastDay := prevMonthTime.AddDate(0, 1, 0).AddDate(0, 0, -1)
 	prevEndDate := prevLastDay.Format("2006-01-02")
-	
+
 	var prevIncome, prevExpense float64
 	db.Model(&models.Transaction{}).
 		Where("user_id = ? AND type = 'income' AND date >= ? AND date <= ?", userID, prevStartDate, prevEndDate).
 		Select("COALESCE(SUM(amount), 0)").
 		Scan(&prevIncome)
-	
+
 	db.Model(&models.Transaction{}).
 		Where("user_id = ? AND type = 'expense' AND date >= ? AND date <= ?", userID, prevStartDate, prevEndDate).
 		Select("COALESCE(SUM(amount), 0)").
 		Scan(&prevExpense)
-	
+
 	if prevIncome > 0 || prevExpense > 0 {
 		context.WriteString(fmt.Sprintf("Сравнение с предыдущим месяцем (%s):\n", prevMonth))
 		if prevIncome > 0 {
@@ -251,7 +251,7 @@ func (h *ChatHandler) buildFinancialContext(userID uint) string {
 			} else if tx.Type == "expense" {
 				essential = " [необязательное]"
 			}
-			context.WriteString(fmt.Sprintf("- %s: %s%.2f₽ (%s%s) - %s\n", 
+			context.WriteString(fmt.Sprintf("- %s: %s%.2f₽ (%s%s) - %s\n",
 				tx.Date.Format("02.01.2006"), sign, tx.Amount, tx.Category, essential, tx.Description))
 		}
 		context.WriteString("\n")
@@ -331,4 +331,3 @@ func (h *ChatHandler) buildMessages(context string, history []models.ChatMessage
 
 	return messages
 }
-

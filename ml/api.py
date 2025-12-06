@@ -8,6 +8,12 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import os
 import joblib
+import logging
+from prophet import Prophet
+
+# Отключаем лишние логи Prophet
+logging.getLogger('cmdstanpy').setLevel(logging.WARNING)
+logging.getLogger('prophet').setLevel(logging.WARNING)
 
 app = FastAPI(
     title="Clarity ML Service",
@@ -230,6 +236,245 @@ class BatchPredictResponse(BaseModel):
     results: List[BatchResult]
     summary: BatchSummary
 
+# --- Модели для финансового анализа и прогнозирования ---
+class AnalyzeTransaction(BaseModel):
+    """Модель транзакции для анализа"""
+    date: str
+    amount: float
+    category: str
+    is_essential: bool = False
+    
+    class Config:
+        extra = "ignore"
+
+class BudgetHealth(BaseModel):
+    score: int
+    status: str
+    saved_percent: float
+    spent_percent: float
+    description: str
+
+class MLForecast(BaseModel):
+    predicted_expense_next_month: float
+    model_used: str
+
+class FinancialCushion(BaseModel):
+    target_amount: float
+    current_amount: float
+    progress_percent: float
+    reasoning: str
+
+class Metrics(BaseModel):
+    avg_monthly_income: int
+    avg_monthly_expense: int
+
+class MandatoryExpenses(BaseModel):
+    total: float
+    categories: List[str]
+
+class OptimizationAdvice(BaseModel):
+    category: str
+    current_spend: int
+    action: str
+    recommendation: str
+
+class AnalyzeResponse(BaseModel):
+    budget_health: BudgetHealth
+    ml_forecast: MLForecast
+    financial_cushion: FinancialCushion
+    metrics: Metrics
+    mandatory_expenses: MandatoryExpenses
+    optimization_plan: List[OptimizationAdvice]
+
+# --- Класс для финансового анализа ---
+class FinancialBrain:
+    """Класс для анализа финансов и прогнозирования"""
+    
+    def __init__(self, df):
+        self.df = df.copy()
+        # Парсинг даты и удаление таймзоны
+        self.df['ds'] = pd.to_datetime(self.df['date']).dt.tz_localize(None)
+        self.df['y'] = self.df['amount']
+        
+        if 'is_essential' in self.df.columns:
+            self.df['is_mandatory'] = self.df['is_essential']
+        else:
+            self.df['is_mandatory'] = False
+        
+        self.incomes = self.df[self.df['y'] > 0]
+        self.expenses = self.df[self.df['y'] < 0]
+        
+        if not self.incomes.empty:
+            self.monthly_income = self.incomes.set_index('ds').resample('M')['y'].sum().mean()
+        else:
+            self.monthly_income = 0.0
+        
+        if not self.expenses.empty:
+            self.monthly_expense_total = abs(self.expenses.set_index('ds').resample('M')['y'].sum().mean())
+        else:
+            self.monthly_expense_total = 0.0
+
+    def detect_mandatory_expenses(self):
+        """Автоматическое определение обязательных расходов"""
+        if self.expenses.empty:
+            return 0.0, []
+        
+        # ML-подобная эвристика (поиск низкой дисперсии)
+        stats = self.expenses.groupby('category')['y'].agg(['count', 'mean', 'std'])
+        ml_detected = stats[
+            (stats['count'] >= 3) & 
+            (stats['std'].fillna(0) < abs(stats['mean'] * 0.1))
+        ].index.tolist()
+        
+        backend_flagged = []
+        if 'is_mandatory' in self.expenses.columns:
+            backend_flagged = self.expenses[self.expenses['is_mandatory'] == True]['category'].unique().tolist()
+        
+        final_categories = list(set(ml_detected + backend_flagged))
+        mandatory_df = self.expenses[self.expenses['category'].isin(final_categories)]
+        
+        if not mandatory_df.empty:
+            monthly_val = abs(mandatory_df.set_index('ds').resample('M')['y'].sum().mean())
+        else:
+            monthly_val = 0.0
+            
+        return monthly_val, final_categories
+
+    def predict_next_month_expenses(self):
+        """Прогнозирование расходов на следующий месяц с помощью Prophet"""
+        if self.expenses.empty:
+            return 0.0
+        
+        # Готовим данные: суммируем расходы по дням
+        daily_spend = self.expenses.groupby('ds')['y'].sum().reset_index()
+        daily_spend['y'] = daily_spend['y'].abs()  # Prophet учим на положительных числах
+        
+        # Если данных мало (меньше 2 недель), ML не сработает, возвращаем среднее
+        if len(daily_spend) < 14:
+            return round(self.monthly_expense_total, 2)
+        
+        try:
+            # Обучение модели Prophet
+            m = Prophet(daily_seasonality=False, weekly_seasonality=True)
+            m.fit(daily_spend)
+            
+            # Прогноз на 30 дней
+            future = m.make_future_dataframe(periods=30)
+            forecast = m.predict(future)
+            
+            # Сумма прогноза только за БУДУЩИЕ 30 дней
+            last_date = daily_spend['ds'].max()
+            future_only = forecast[forecast['ds'] > last_date]
+            predicted_sum = future_only['yhat'].sum()
+            
+            return round(max(0, predicted_sum), 2)
+        except Exception:
+            return round(self.monthly_expense_total, 2)
+
+    def calculate_smart_cushion(self, mandatory_val):
+        """Расчет адаптивной финансовой подушки"""
+        if self.incomes.empty:
+            return 0, 6, "Нет дохода"
+        
+        income_monthly = self.incomes.set_index('ds').resample('M')['y'].sum()
+        # Коэффициент вариации
+        income_cv = income_monthly.std() / income_monthly.mean() if income_monthly.mean() != 0 else 0
+        
+        months_target = 6 if income_cv > 0.2 else 3
+        risk_label = "Высокая волатильность" if income_cv > 0.2 else "Стабильный доход"
+        base = mandatory_val if mandatory_val > 0 else (self.monthly_expense_total * 0.5)
+        target_amount = (base * months_target) + (self.monthly_expense_total * 0.5)
+        
+        return round(target_amount, -2), months_target, risk_label
+
+    def generate_optimization_advice(self, mandatory_cats):
+        """Генерация конкретных рекомендаций по оптимизации"""
+        if self.expenses.empty:
+            return []
+        
+        cat_expenses = self.expenses.groupby('category')['y'].sum().abs().sort_values(ascending=False)
+        advice_list = []
+        for cat, amount_total in cat_expenses.items():
+            if cat in mandatory_cats:
+                continue
+            avg_monthly = amount_total / (self.df['ds'].dt.to_period('M').nunique())
+            if avg_monthly > (self.monthly_income * 0.05):
+                save_amount = avg_monthly * 0.15
+                advice_list.append({
+                    "category": cat,
+                    "current_spend": round(avg_monthly),
+                    "action": f"Категория '{cat}' занимает {int(avg_monthly)} р/мес.",
+                    "recommendation": f"Сократите на 15% (+{int(save_amount)} р)."
+                })
+        return advice_list
+
+    def run_full_analysis(self):
+        """Полный анализ финансов с прогнозированием"""
+        mandatory_val, mandatory_cats = self.detect_mandatory_expenses()
+        cushion_target, cushion_months, risk_label = self.calculate_smart_cushion(mandatory_val)
+        
+        # ЗАПУСК ML ПРОГНОЗА
+        ml_forecast_val = self.predict_next_month_expenses()
+        
+        # Текущий баланс = сумма всех доходов и расходов
+        # (доходы положительные, расходы отрицательные)
+        current_balance = self.df['y'].sum()
+        
+        # Прогресс финансовой подушки (показываем реальный процент)
+        if cushion_target > 0:
+            cushion_progress = (current_balance / cushion_target) * 100
+        else:
+            cushion_progress = 0
+        
+        # Score
+        if self.monthly_income > 0:
+            spent_percent = (self.monthly_expense_total / self.monthly_income) * 100
+            saved_percent = 100 - spent_percent
+        else:
+            spent_percent = 100
+            saved_percent = 0
+        
+        score = int(max(0, min(100, saved_percent)))
+        if score >= 50:
+            status = "Excellent"
+        elif score >= 20:
+            status = "Stable"
+        elif score > 0:
+            status = "Warning"
+        else:
+            status = "Critical"
+        
+        optimizations = self.generate_optimization_advice(mandatory_cats)
+        
+        return {
+            "budget_health": {
+                "score": score,
+                "status": status,
+                "saved_percent": round(saved_percent, 1),
+                "spent_percent": round(spent_percent, 1),
+                "description": f"Вы сохраняете {int(saved_percent)}%. Рейтинг: {score}/100."
+            },
+            "ml_forecast": {
+                "predicted_expense_next_month": ml_forecast_val,
+                "model_used": "Prophet (Meta TimeSeries)"
+            },
+            "financial_cushion": {
+                "target_amount": cushion_target,
+                "current_amount": round(current_balance),
+                "progress_percent": round(cushion_progress, 1),
+                "reasoning": f"Цель: {cushion_months} мес. ({risk_label})"
+            },
+            "metrics": {
+                "avg_monthly_income": int(self.monthly_income),
+                "avg_monthly_expense": int(self.monthly_expense_total)
+            },
+            "mandatory_expenses": {
+                "total": round(mandatory_val),
+                "categories": mandatory_cats
+            },
+            "optimization_plan": optimizations
+        }
+
 @app.get("/health")
 async def health():
     """Проверка работоспособности API"""
@@ -349,6 +594,36 @@ async def batch_predict(transactions: List[TransactionRequest]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/analyze", response_model=AnalyzeResponse)
+async def analyze(transactions: List[AnalyzeTransaction]):
+    """
+    Полный финансовый анализ с ML-прогнозированием
+    
+    Анализирует транзакции и возвращает:
+    - Budget Health Score
+    - ML-прогноз расходов на следующий месяц (Prophet)
+    - Финансовую подушку с адаптивным расчетом
+    - Автоматическое определение обязательных расходов
+    - Конкретные рекомендации по оптимизации
+    """
+    try:
+        if not transactions:
+            raise HTTPException(status_code=400, detail="No transactions provided")
+        
+        # Преобразуем Pydantic модели в dict
+        records = [t.dict() for t in transactions]
+        df = pd.DataFrame(records)
+        
+        # Запускаем анализ
+        brain = FinancialBrain(df)
+        report = brain.run_full_analysis()
+        
+        # Преобразуем в Pydantic модели
+        return AnalyzeResponse(**report)
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
+
 @app.get("/model_info")
 async def model_info():
     """Информация о модели"""
@@ -377,6 +652,7 @@ if __name__ == '__main__':
     print("  POST /categorize    - Классификация транзакции")
     print("  POST /predict       - Предсказание (расширенный формат)")
     print("  POST /batch_predict - Пакетное предсказание")
+    print("  POST /analyze       - Финансовый анализ с ML-прогнозированием")
     print("="*50 + "\n")
     
     uvicorn.run(app, host="0.0.0.0", port=5000)

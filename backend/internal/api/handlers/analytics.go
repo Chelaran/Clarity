@@ -20,14 +20,14 @@ func NewAnalyticsHandler(repo *repository.Repository) *AnalyticsHandler {
 }
 
 type SummaryResponse struct {
-	Month           string             `json:"month"`
-	TotalIncome     float64            `json:"total_income"`
-	TotalExpense    float64            `json:"total_expense"`
-	Balance         float64            `json:"balance"`
-	SavingsRate     float64            `json:"savings_rate"`
-	ByCategory      map[string]float64 `json:"by_category"`
-	EssentialExpense float64            `json:"essential_expense"`
-	NonEssentialExpense float64        `json:"non_essential_expense"`
+	Month               string             `json:"month"`
+	TotalIncome         float64            `json:"total_income"`
+	TotalExpense        float64            `json:"total_expense"`
+	Balance             float64            `json:"balance"`
+	SavingsRate         float64            `json:"savings_rate"`
+	ByCategory          map[string]float64 `json:"by_category"`
+	EssentialExpense    float64            `json:"essential_expense"`
+	NonEssentialExpense float64            `json:"non_essential_expense"`
 }
 
 type TrendData struct {
@@ -98,13 +98,13 @@ func (h *AnalyticsHandler) Summary(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, SummaryResponse{
-		Month:            month,
-		TotalIncome:      totalIncome,
-		TotalExpense:     totalExpense,
-		Balance:          balance,
-		SavingsRate:      savingsRate,
-		ByCategory:       byCategory,
-		EssentialExpense: essentialExpense,
+		Month:               month,
+		TotalIncome:         totalIncome,
+		TotalExpense:        totalExpense,
+		Balance:             balance,
+		SavingsRate:         savingsRate,
+		ByCategory:          byCategory,
+		EssentialExpense:    essentialExpense,
 		NonEssentialExpense: nonEssentialExpense,
 	})
 }
@@ -158,4 +158,3 @@ func (h *AnalyticsHandler) Trends(c *gin.Context) {
 
 	c.JSON(http.StatusOK, TrendsResponse{Months: trends})
 }
-

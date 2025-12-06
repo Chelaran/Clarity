@@ -113,4 +113,3 @@ func (h *HealthScoreHandler) GetDepositDetails(c *gin.Context) {
 
 	c.JSON(http.StatusOK, details)
 }
-

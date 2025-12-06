@@ -28,7 +28,7 @@ func NewTransactionHandler(repo *repository.Repository, mlClient *service.MLClie
 type CreateTransactionRequest struct {
 	Amount      float64 `json:"amount" binding:"required"`
 	Description string  `json:"description"`
-	RefNo       string  `json:"ref_no"`              // Референсный номер транзакции
+	RefNo       string  `json:"ref_no"` // Референсный номер транзакции
 	Date        string  `json:"date"`
 	Type        string  `json:"type" binding:"required,oneof=income expense"`
 	IsEssential bool    `json:"is_essential"`
@@ -74,7 +74,7 @@ func (h *TransactionHandler) Create(c *gin.Context) {
 		if refNo == "" && req.Description != "" {
 			refNo = req.Description
 		}
-		
+
 		// Пытаемся классифицировать через ML сервис (основной метод)
 		result, err := h.mlClient.CategorizeWithDate(refNo, req.Amount, tx.Date)
 		if err == nil {
@@ -190,20 +190,20 @@ func (h *TransactionHandler) classifyByDescription(description string, amount fl
 	if description == "" {
 		return "Misc"
 	}
-	
+
 	desc := strings.ToLower(description)
-	
+
 	// Проверяем в порядке приоритета (более специфичные сначала)
-	
+
 	// Аренда/Жилье
-	if strings.Contains(desc, "аренд") || strings.Contains(desc, "квартир") || strings.Contains(desc, "жилье") || 
+	if strings.Contains(desc, "аренд") || strings.Contains(desc, "квартир") || strings.Contains(desc, "жилье") ||
 		strings.Contains(desc, "коммунал") || strings.Contains(desc, "жкх") || strings.Contains(desc, "управляющ") ||
 		strings.Contains(desc, "домофон") || strings.Contains(desc, "консьерж") || strings.Contains(desc, "ипотек") {
 		return "Rent"
 	}
-	
+
 	// Еда - проверяем, что это не "магазин продуктов" (это Shopping)
-	foodKeywords := []string{"еда", "обед", "ужин", "кафе", "ресторан", "столовая", "завтрак", "ланч", 
+	foodKeywords := []string{"еда", "обед", "ужин", "кафе", "ресторан", "столовая", "завтрак", "ланч",
 		"пицц", "суши", "бургер", "шашлык", "кофе", "чай", "напиток", "десерт", "морожен", "кондитерск",
 		"пекарн", "доставк", "еды", "заказ еды", "едапорт", "delivery", "food", "cafe", "restaurant"}
 	for _, keyword := range foodKeywords {
@@ -217,9 +217,9 @@ func (h *TransactionHandler) classifyByDescription(description string, amount fl
 		strings.Contains(desc, "хлеб") || strings.Contains(desc, "бакалея")) && !strings.Contains(desc, "магазин") {
 		return "Food"
 	}
-	
+
 	// Транспорт
-	transportKeywords := []string{"такси", "uber", "yandex", "ситимобил", "gett", "транспорт", "метро", 
+	transportKeywords := []string{"такси", "uber", "yandex", "ситимобил", "gett", "транспорт", "метро",
 		"автобус", "троллейбус", "трамвай", "поезд", "электричк", "билет", "проезд", "транспортная карта",
 		"транспортная", "каршеринг", "каршеринг", "бензин", "заправк", "азс", "газ", "парковк", "стоянк",
 		"штраф", "гибдд", "дпс", "транспортный налог"}
@@ -228,7 +228,7 @@ func (h *TransactionHandler) classifyByDescription(description string, amount fl
 			return "Transport"
 		}
 	}
-	
+
 	// Shopping
 	shoppingKeywords := []string{"одежд", "шоппинг", "магазин", "покупк", "торгов", "торговый центр",
 		"молл", "бутик", "ателье", "обув", "аксессуар", "электроник", "телефон", "ноутбук", "планшет",
@@ -237,40 +237,39 @@ func (h *TransactionHandler) classifyByDescription(description string, amount fl
 	for _, keyword := range shoppingKeywords {
 		if strings.Contains(desc, keyword) {
 			// Исключения для продуктовых магазинов
-			if (keyword == "магазин" || keyword == "покупк") && 
+			if (keyword == "магазин" || keyword == "покупк") &&
 				(strings.Contains(desc, "продукт") || strings.Contains(desc, "еда") || strings.Contains(desc, "продуктов")) {
 				continue
 			}
 			return "Shopping"
 		}
 	}
-	
+
 	// Здоровье/Медицина (может быть отдельной категорией, но пока Shopping)
 	if strings.Contains(desc, "больниц") || strings.Contains(desc, "поликлиник") || strings.Contains(desc, "врач") ||
 		strings.Contains(desc, "стоматолог") || strings.Contains(desc, "лечение") || strings.Contains(desc, "анализ") {
 		return "Shopping" // Или можно добавить отдельную категорию "Health"
 	}
-	
+
 	// Образование
 	if strings.Contains(desc, "образован") || strings.Contains(desc, "университет") || strings.Contains(desc, "школ") ||
 		strings.Contains(desc, "курс") || strings.Contains(desc, "обучен") || strings.Contains(desc, "репетитор") {
 		return "Shopping" // Или можно добавить отдельную категорию "Education"
 	}
-	
+
 	// Развлечения
 	if strings.Contains(desc, "кино") || strings.Contains(desc, "театр") || strings.Contains(desc, "концерт") ||
 		strings.Contains(desc, "клуб") || strings.Contains(desc, "бар") || strings.Contains(desc, "развлечен") ||
 		strings.Contains(desc, "игра") || strings.Contains(desc, "казино") || strings.Contains(desc, "билет") {
 		return "Shopping" // Или можно добавить отдельную категорию "Entertainment"
 	}
-	
+
 	// Зарплата - по сумме и ключевым словам
 	if amount > 5000 || strings.Contains(desc, "зарплат") || strings.Contains(desc, "заработн") ||
 		strings.Contains(desc, "доход") || strings.Contains(desc, "выплат") || strings.Contains(desc, "перевод") {
 		return "Salary"
 	}
-	
+
 	// Если ничего не подошло - Misc
 	return "Misc"
 }
-

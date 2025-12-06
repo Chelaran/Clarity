@@ -27,12 +27,14 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string, yand
 
 	// Protected routes
 	mlClient := service.NewMLClient(mlServiceURL)
+	forecastClient := service.NewForecastClient(mlServiceURL)
 	txHandler := handlers.NewTransactionHandler(repo, mlClient)
 	analyticsHandler := handlers.NewAnalyticsHandler(repo)
 	healthScoreHandler := handlers.NewHealthScoreHandler(repo)
 	investmentHandler := handlers.NewInvestmentHandler(repo)
 	depositHandler := handlers.NewDepositHandler(repo)
 	chatHandler := handlers.NewChatHandler(repo, yandexGPT)
+	forecastHandler := handlers.NewForecastHandler(repo, forecastClient)
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware(jwtSecret))
 	{
@@ -65,6 +67,10 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string, yand
 		// AI Chat
 		protected.POST("/chat", chatHandler.SendMessage)
 		protected.GET("/chat/history", chatHandler.GetHistory)
+
+		// Financial Analysis & Forecasting
+		protected.POST("/analyze", forecastHandler.Analyze)
+		protected.GET("/predict", forecastHandler.Predict)
 	}
 
 	return r

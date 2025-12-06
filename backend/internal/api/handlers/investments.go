@@ -49,12 +49,12 @@ func (h *InvestmentHandler) Create(c *gin.Context) {
 	}
 
 	inv := &models.Investment{
-		UserID:      userID,
-		Amount:      req.Amount,
-		Type:        req.Type,
-		Description: req.Description,
+		UserID:       userID,
+		Amount:       req.Amount,
+		Type:         req.Type,
+		Description:  req.Description,
 		CurrentValue: req.CurrentValue,
-		CreatedAt:   time.Now(),
+		CreatedAt:    time.Now(),
 	}
 
 	if req.Date != "" {
@@ -169,4 +169,3 @@ func (h *InvestmentHandler) Delete(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Investment deleted"})
 }
-

@@ -60,4 +60,3 @@ func GetUserID(c *gin.Context) uint {
 	}
 	return userID.(uint)
 }
-

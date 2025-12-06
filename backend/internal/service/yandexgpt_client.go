@@ -35,9 +35,9 @@ type YandexGPTMessage struct {
 }
 
 type YandexGPTRequest struct {
-	ModelURI          string              `json:"modelUri"`
-	CompletionOptions CompletionOptions   `json:"completionOptions"`
-	Messages          []YandexGPTMessage  `json:"messages"`
+	ModelURI          string             `json:"modelUri"`
+	CompletionOptions CompletionOptions  `json:"completionOptions"`
+	Messages          []YandexGPTMessage `json:"messages"`
 }
 
 type CompletionOptions struct {
@@ -121,4 +121,3 @@ func (c *YandexGPTClient) Chat(messages []YandexGPTMessage) (string, error) {
 
 	return result.Result.Alternatives[0].Message.Text, nil
 }
-

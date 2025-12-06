@@ -34,7 +34,7 @@ func (r *Repository) CreateTransaction(t *models.Transaction) error {
 func (r *Repository) GetTransactions(userID uint, limit, offset int, month, startDate, endDate string) ([]models.Transaction, error) {
 	var txs []models.Transaction
 	query := r.db.Where("user_id = ?", userID)
-	
+
 	if month != "" {
 		query = query.Where("DATE_TRUNC('month', date) = ?", month)
 	} else if startDate != "" && endDate != "" {
@@ -44,7 +44,7 @@ func (r *Repository) GetTransactions(userID uint, limit, offset int, month, star
 	} else if endDate != "" {
 		query = query.Where("date <= ?", endDate)
 	}
-	
+
 	err := query.Order("date desc").Limit(limit).Offset(offset).Find(&txs).Error
 	return txs, err
 }
