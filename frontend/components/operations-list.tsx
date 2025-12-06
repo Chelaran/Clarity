@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge"
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { Loader2 } from "lucide-react"
+import { DateRange } from "react-day-picker"
+import { format } from "date-fns"
+import { useRefresh } from "@/components/refresh-context" // <--- 1. Импортируем контекст
 
 // --- ИНТЕРФЕЙСЫ ---
 interface Transaction {
@@ -51,13 +54,16 @@ const categoryIcons: Record<string, string> = {
   other: "📝",
 }
 
-const formatDate = (dateString: string): { date: string; time: string } => {
-  const date = new Date(dateString)
+const formatDateTime = (targetDateString: string, createdAtString?: string): { date: string; time: string } => {
+  const dateObj = new Date(targetDateString)
   const now = new Date()
+  
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
-  const transactionDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  
+  const [y, m, d] = targetDateString.split('T')[0].split('-').map(Number)
+  const transactionDate = new Date(y, m - 1, d)
 
   let dateStr: string
   if (transactionDate.getTime() === today.getTime()) {
@@ -69,15 +75,17 @@ const formatDate = (dateString: string): { date: string; time: string } => {
       "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
       "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"
     ]
-    dateStr = `${date.getDate()} ${months[date.getMonth()]}`
+    dateStr = `${transactionDate.getDate()} ${months[transactionDate.getMonth()]}`
   }
 
-  const timeStr = date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+  const timeObj = createdAtString ? new Date(createdAtString) : new Date()
+  const timeStr = timeObj.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+
   return { date: dateStr, time: timeStr }
 }
 
 const transactionToOperation = (tx: Transaction): Operation => {
-  const { date, time } = formatDate(tx.date)
+  const { date, time } = formatDateTime(tx.date, tx.created_at)
   const icon = categoryIcons[tx.category] || categoryIcons[tx.category.toLowerCase()] || "📝"
   
   return {
@@ -98,10 +106,15 @@ const transactionToOperation = (tx: Transaction): Operation => {
 interface OperationsListProps {
   activeFilter: string
   searchQuery: string
+  dateRange: DateRange | undefined
 }
 
-export function OperationsList({ activeFilter, searchQuery }: OperationsListProps) {
+export function OperationsList({ activeFilter, searchQuery, dateRange }: OperationsListProps) {
   const { token } = useAuth()
+  
+  // 2. Получаем сигнал обновления
+  const { refreshIndex } = useRefresh()
+
   const [operations, setOperations] = useState<Operation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -130,6 +143,13 @@ export function OperationsList({ activeFilter, searchQuery }: OperationsListProp
 
       if (searchQuery) {
         url += `&search=${encodeURIComponent(searchQuery)}`
+      }
+
+      if (dateRange?.from) {
+        url += `&start_date=${format(dateRange.from, "yyyy-MM-dd")}`
+      }
+      if (dateRange?.to) {
+        url += `&end_date=${format(dateRange.to, "yyyy-MM-dd")}`
       }
 
       const response = await fetch(url, {
@@ -176,9 +196,9 @@ export function OperationsList({ activeFilter, searchQuery }: OperationsListProp
     } finally {
       setIsLoading(false)
     }
-  }, [token, activeFilter, offset, searchQuery])
+  }, [token, activeFilter, offset, searchQuery, dateRange]) 
 
-  // Эффект для отслеживания изменений фильтра и поиска
+  // Эффект обновления
   useEffect(() => {
     const timer = setTimeout(() => {
       setOperations([])
@@ -187,8 +207,11 @@ export function OperationsList({ activeFilter, searchQuery }: OperationsListProp
     }, 300)
 
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter, searchQuery, token]) 
+    
+    // 3. ДОБАВИЛИ refreshIndex СЮДА
+    // Теперь при изменении refreshIndex (сигнал от модалки) сработает этот эффект
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilter, searchQuery, dateRange, token, refreshIndex]) 
 
   const loadMore = () => {
     if (!isLoading && hasMore) {
