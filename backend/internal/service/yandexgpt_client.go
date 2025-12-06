@@ -31,7 +31,7 @@ func NewYandexGPTClient(apiKey, folderID, modelURI string) *YandexGPTClient {
 
 type YandexGPTMessage struct {
 	Role string `json:"role"` // "user" или "assistant"
-	Text string `json:"text"` // YandexGPT использует "text" вместо "content"
+	Text string `json:"text"`
 }
 
 type YandexGPTRequest struct {
