@@ -7,6 +7,7 @@ import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { useRefresh } from "@/components/refresh-context"
 import { motion } from "framer-motion"
+import { useRouter } from "next/navigation"
 
 interface SummaryData {
   month: string
@@ -22,6 +23,7 @@ interface SummaryData {
 
 export function StatsCards() {
   const { token } = useAuth()
+  const router = useRouter()
   
   // 2. Получаем сигнал обновления
   const { refreshIndex } = useRefresh()
@@ -180,7 +182,12 @@ export function StatsCards() {
       animate="visible"
     >
       {/* Income Card */}
-      <motion.div variants={cardVariants} whileHover={{ scale: 1.02, y: -2 }} transition={{ duration: 0.2 }}>
+      <motion.div 
+        variants={cardVariants} 
+        whileHover={{ scale: 1.02, y: -2 }} 
+        transition={{ duration: 0.2 }}
+        onClick={() => router.push("/operations?filter=income")}
+      >
         <Card className="p-6 bg-[#E8F5F0] border-0 cursor-pointer transition-shadow hover:shadow-lg">
         <div className="flex items-start justify-between">
           <div>
@@ -222,7 +229,12 @@ export function StatsCards() {
       </motion.div>
 
       {/* Expense Card */}
-      <motion.div variants={cardVariants} whileHover={{ scale: 1.02, y: -2 }} transition={{ duration: 0.2 }}>
+      <motion.div 
+        variants={cardVariants} 
+        whileHover={{ scale: 1.02, y: -2 }} 
+        transition={{ duration: 0.2 }}
+        onClick={() => router.push("/operations?filter=expense")}
+      >
         <Card className="p-6 bg-[#FFF4E6] border-0 cursor-pointer transition-shadow hover:shadow-lg">
         <div className="flex items-start justify-between">
           <div>
