@@ -4,9 +4,13 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { Loader2, Calendar, Tag, FileText, Hash, CreditCard } from "lucide-react"
+import { Loader2, Calendar, Tag, FileText, Hash, CreditCard, Edit, Trash2 } from "lucide-react"
 import { useRefresh } from "@/components/refresh-context"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
@@ -16,7 +20,25 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface Transaction {
   id: number
@@ -67,16 +89,41 @@ const formatDate = (dateString: string): string => {
   }
 }
 
+// Список категорий для редактирования (реальные категории системы)
+const categoryOptions = [
+  { value: "Food", label: "Еда" },
+  { value: "Transport", label: "Транспорт" },
+  { value: "Shopping", label: "Шопинг" },
+  { value: "Rent", label: "Аренда/Жилье" },
+  { value: "Salary", label: "Зарплата" },
+  { value: "Health", label: "Здоровье" },
+  { value: "Education", label: "Образование" },
+  { value: "Entertainment", label: "Развлечения" },
+  { value: "Cafe", label: "Кафе и рестораны" },
+  { value: "Misc", label: "Разное" },
+]
+
 export function TransactionHistory() {
   const { token } = useAuth()
   
   // 2. Получаем сигнал обновления
-  const { refreshIndex } = useRefresh()
+  const { refreshIndex, triggerRefresh } = useRefresh()
 
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editForm, setEditForm] = useState({
+    amount: "",
+    description: "",
+    category: "",
+    date: "",
+    isEssential: false,
+  })
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -118,6 +165,115 @@ export function TransactionHistory() {
     fetchTransactions()
   // 4. Добавляем refreshIndex в зависимости
   }, [token, refreshIndex])
+
+  // Функция обновления транзакции
+  const handleUpdateTransaction = async () => {
+    if (!selectedTransaction || !token) return
+
+    setIsUpdating(true)
+    try {
+      const payload: any = {}
+      
+      if (editForm.amount !== "") {
+        const amount = parseFloat(editForm.amount)
+        if (isNaN(amount)) {
+          alert("Неверная сумма")
+          setIsUpdating(false)
+          return
+        }
+        // Сохраняем знак в зависимости от типа транзакции
+        payload.amount = selectedTransaction.type === "expense" ? -Math.abs(amount) : Math.abs(amount)
+      }
+      
+      if (editForm.description !== "") {
+        payload.description = editForm.description
+      }
+      
+      if (editForm.category !== "") {
+        payload.category = editForm.category
+      }
+      
+      if (editForm.date !== "") {
+        // Преобразуем формат даты из DD.MM.YYYY в YYYY-MM-DD
+        const [day, month, year] = editForm.date.split(".")
+        payload.date = `${year}-${month}-${day}`
+      }
+      
+      if (selectedTransaction.type === "expense") {
+        payload.is_essential = editForm.isEssential
+      }
+
+      const response = await fetch(`${apiUrl("/transactions")}/${selectedTransaction.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error("Не удалось обновить транзакцию")
+      }
+
+      // Обновляем список транзакций
+      triggerRefresh()
+      setIsEditing(false)
+      setSelectedTransaction(null)
+      setEditForm({ amount: "", description: "", category: "", date: "", isEssential: false })
+    } catch (err) {
+      console.error("Error updating transaction:", err)
+      alert("Ошибка при обновлении транзакции")
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  // Функция удаления транзакции
+  const handleDelete = async () => {
+    if (!selectedTransaction || !token) return
+
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`${apiUrl("/transactions")}/${selectedTransaction.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error("Не удалось удалить транзакцию")
+      }
+
+      // Обновляем список транзакций
+      triggerRefresh()
+      setShowDeleteDialog(false)
+      setSelectedTransaction(null)
+    } catch (err) {
+      console.error("Error deleting transaction:", err)
+      alert("Ошибка при удалении транзакции")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Открываем режим редактирования
+  const handleEditClick = () => {
+    if (selectedTransaction) {
+      const date = new Date(selectedTransaction.date)
+      const formattedDate = `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()}`
+      
+      setEditForm({
+        amount: Math.abs(selectedTransaction.amount).toString(),
+        description: selectedTransaction.description || "",
+        category: selectedTransaction.category || "Misc",
+        date: formattedDate,
+        isEssential: selectedTransaction.is_essential || false,
+      })
+      setIsEditing(true)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -199,8 +355,128 @@ export function TransactionHistory() {
         <a href="/operations">Загрузить больше</a>
       </Button>
 
+      {/* Модальное окно редактирования транзакции */}
+      <Dialog open={isEditing && !!selectedTransaction} onOpenChange={(open) => {
+        if (!open) {
+          setIsEditing(false)
+          setEditForm({ amount: "", description: "", category: "", date: "", isEssential: false })
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Редактировать транзакцию</DialogTitle>
+            <DialogDescription>
+              Измените необходимые поля транзакции
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Сумма */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">Сумма (₽)</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                placeholder="Введите сумму"
+                value={editForm.amount}
+                onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+              />
+            </div>
+
+            {/* Описание */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Описание</Label>
+              <Textarea
+                id="description"
+                placeholder="Введите описание транзакции"
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                rows={3}
+              />
+            </div>
+
+            {/* Категория */}
+            <div className="space-y-2">
+              <Label htmlFor="category">Категория</Label>
+              <Select value={editForm.category} onValueChange={(value) => setEditForm({ ...editForm, category: value })}>
+                <SelectTrigger id="category">
+                  <SelectValue placeholder="Выберите категорию" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Дата */}
+            <div className="space-y-2">
+              <Label htmlFor="date">Дата (ДД.ММ.ГГГГ)</Label>
+              <Input
+                id="date"
+                type="text"
+                placeholder="ДД.ММ.ГГГГ"
+                value={editForm.date}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, "")
+                  let formatted = value
+                  if (value.length > 2) formatted = value.slice(0, 2) + "." + value.slice(2)
+                  if (value.length > 4) formatted = value.slice(0, 2) + "." + value.slice(2, 4) + "." + value.slice(4, 8)
+                  setEditForm({ ...editForm, date: formatted })
+                }}
+                maxLength={10}
+              />
+            </div>
+
+            {/* Тип траты (только для расходов) */}
+            {selectedTransaction?.type === "expense" && (
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="isEssential"
+                  checked={editForm.isEssential}
+                  onCheckedChange={(checked) => setEditForm({ ...editForm, isEssential: checked as boolean })}
+                />
+                <Label htmlFor="isEssential" className="cursor-pointer">
+                  Обязательная трата
+                </Label>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsEditing(false)
+              setEditForm({ amount: "", description: "", category: "", date: "", isEssential: false })
+            }}>
+              Отмена
+            </Button>
+            <Button onClick={handleUpdateTransaction} disabled={isUpdating}>
+              {isUpdating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Сохранение...
+                </>
+              ) : (
+                "Сохранить"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Модальное окно с деталями транзакции */}
-      <Dialog open={!!selectedTransaction} onOpenChange={(open) => !open && setSelectedTransaction(null)}>
+      <Dialog 
+        open={!!selectedTransaction && !isEditing} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTransaction(null)
+            setIsEditing(false)
+            setEditForm({ amount: "", description: "", category: "", date: "", isEssential: false })
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl">
           {selectedTransaction && (
             <>
@@ -316,10 +592,68 @@ export function TransactionHistory() {
                   </div>
                 )}
               </div>
+
+              {/* Кнопки действий */}
+              <DialogFooter className="flex gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  onClick={handleEditClick}
+                  disabled={isEditing}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Редактировать
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => setShowDeleteDialog(true)}
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Удалить
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Диалог подтверждения удаления */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить транзакцию?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите удалить эту транзакцию? Это действие нельзя отменить.
+              {selectedTransaction && (
+                <div className="mt-2 p-2 bg-muted rounded text-sm">
+                  <p className="font-medium">{selectedTransaction.description || selectedTransaction.category}</p>
+                  <p className="text-muted-foreground">
+                    {selectedTransaction.type === "income" ? "+" : "-"}
+                    {Math.abs(selectedTransaction.amount).toLocaleString("ru-RU")} ₽
+                  </p>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Удаление...
+                </>
+              ) : (
+                "Удалить"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

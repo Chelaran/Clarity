@@ -39,7 +39,11 @@ type CreateTransactionRequest struct {
 }
 
 type UpdateTransactionRequest struct {
-	Category string `json:"category" binding:"required"`
+	Amount      *float64 `json:"amount,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Category    *string  `json:"category,omitempty"`
+	Date        *string  `json:"date,omitempty"`
+	IsEssential *bool   `json:"is_essential,omitempty"`
 }
 
 func (h *TransactionHandler) Create(c *gin.Context) {
@@ -219,7 +223,27 @@ func (h *TransactionHandler) Update(c *gin.Context) {
 		return
 	}
 
-	tx.Category = req.Category
+	// Обновляем только переданные поля
+	if req.Amount != nil {
+		tx.Amount = *req.Amount
+	}
+	if req.Description != nil {
+		tx.Description = *req.Description
+	}
+	if req.Category != nil {
+		tx.Category = *req.Category
+	}
+	if req.Date != nil {
+		date, err := time.Parse("2006-01-02", *req.Date)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date format. Use YYYY-MM-DD"})
+			return
+		}
+		tx.Date = date
+	}
+	if req.IsEssential != nil {
+		tx.IsEssential = *req.IsEssential
+	}
 
 	if err := h.repo.UpdateTransaction(tx); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction"})
