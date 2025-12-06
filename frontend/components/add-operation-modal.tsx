@@ -9,8 +9,9 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
-import { useAuth } from "@/lib/auth-context" // Импортируем хук авторизации
+import { useAuth } from "@/lib/auth-context"
 import { apiUrl } from "@/lib/api"
+import { useRefresh } from "@/components/refresh-context" 
 
 interface AddOperationModalProps {
   open: boolean
@@ -27,24 +28,22 @@ const categories = [
   { id: "other", name: "Другое", icon: "📝" },
 ]
 
-// Хелпер для получения текущей даты в формате DD.MM.YYYY
 const getCurrentDate = () => {
   const today = new Date()
   return today.toLocaleDateString("ru-RU")
 }
 
 export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps) {
-  const { token } = useAuth() // Получаем токен
+  const { token } = useAuth()
+  const { triggerRefresh } = useRefresh() // <--- Хук для обновления данных
   
-  // Состояния формы
   const [type, setType] = useState<"expense" | "income">("expense")
   const [amount, setAmount] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [date, setDate] = useState(getCurrentDate())
-  const [isEssential, setIsEssential] = useState(false) // Переименовал isRecurring в isEssential под API
+  const [isEssential, setIsEssential] = useState(false)
   const [description, setDescription] = useState("")
   
-  // Состояния запроса
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -58,19 +57,14 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
     setError(null)
 
     try {
-      // 1. Подготовка данных
-      // Преобразуем дату из DD.MM.YYYY в YYYY-MM-DD
       const [day, month, year] = date.split(".")
       const formattedDate = `${year}-${month}-${day}`
       
-      // Обработка суммы (расход должен быть отрицательным)
       const numericAmount = parseFloat(amount)
       const finalAmount = type === "expense" ? -Math.abs(numericAmount) : Math.abs(numericAmount)
 
-      // Генерация референса
       const refNo = `TXN-${Date.now()}`
 
-      // Если описание пустое, используем имя категории
       const categoryName = categories.find(c => c.id === selectedCategory)?.name || ""
       const finalDescription = description.trim() || categoryName
 
@@ -81,11 +75,8 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
         date: formattedDate,
         type: type,
         is_essential: isEssential
-        // Примечание: API в промпте не принимает поле 'category', 
-        // оно полагается на ML, но мы передаем подсказку в description
       }
 
-      // 2. Отправка запроса
       const response = await fetch(apiUrl("/transactions"), {
         method: "POST",
         headers: {
@@ -99,14 +90,11 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
         throw new Error("Не удалось сохранить операцию")
       }
 
-      const data = await response.json()
-      console.log("Transaction saved:", data)
-
-      // 3. Сброс формы и закрытие
+      // Успех
+      triggerRefresh() // <--- Обновляем данные на главной странице
+      
       onOpenChange(false)
       resetForm()
-      
-      // Здесь в будущем можно добавить обновление списка операций (invalidate queries)
       
     } catch (err: any) {
       setError(err.message || "Произошла ошибка при сохранении")
@@ -142,8 +130,7 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
         )}
 
         <div className="grid gap-4">
-          
-          {/* Type Selector */}
+          {/* Тип операции */}
           <div className="flex bg-muted p-1 rounded-lg">
             <Button
               variant="ghost"
@@ -169,7 +156,7 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
             </Button>
           </div>
 
-          {/* Amount */}
+          {/* Сумма */}
           <div>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">₽</span>
@@ -183,7 +170,7 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
             </div>
           </div>
 
-          {/* Category */}
+          {/* Категории */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-medium text-muted-foreground">Категория</label>
@@ -207,7 +194,7 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
             </div>
           </div>
 
-          {/* Date and Essential Checkbox */}
+          {/* Дата и чекбокс */}
           <div className="flex gap-3 items-center">
             <div className="relative flex-1">
               <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -231,7 +218,7 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
             </div>
           </div>
 
-          {/* Description */}
+          {/* Описание */}
           <div>
             <Textarea
               value={description}
@@ -244,7 +231,7 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Кнопки */}
         <div className="flex gap-3 mt-2">
           <Button variant="outline" size="sm" className="h-9 flex-1 text-xs sm:text-sm">
             <QrCode className="w-3.5 h-3.5 mr-2" />
@@ -252,7 +239,6 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
           </Button>
           <Button
             onClick={handleSubmit}
-            // Кнопка отключена, если нет суммы, токена или идет загрузка
             disabled={!amount || isLoading} 
             size="sm"
             className="h-9 flex-1 bg-primary text-xs sm:text-sm"

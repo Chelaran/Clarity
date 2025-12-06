@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { Loader2 } from "lucide-react"
+import { useRefresh } from "@/components/refresh-context" // 1. Импортируем контекст
 
 interface Transaction {
   id: number
@@ -54,6 +55,10 @@ const formatDate = (dateString: string): string => {
 
 export function TransactionHistory() {
   const { token } = useAuth()
+  
+  // 2. Получаем сигнал обновления
+  const { refreshIndex } = useRefresh()
+
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -80,7 +85,13 @@ export function TransactionHistory() {
         }
 
         const data: Transaction[] = await response.json()
-        setTransactions(data)
+        
+        // 3. Сортируем: Новые (с большим ID или датой) должны быть сверху
+        // Если данные приходят в порядке [Старая -> Новая], мы их разворачиваем.
+        // Надежнее сортировать по ID или дате, чтобы точно новые были сверху.
+        const sortedData = data.sort((a, b) => b.id - a.id) 
+        
+        setTransactions(sortedData)
       } catch (err) {
         setError(err instanceof Error ? err.message : "Произошла ошибка")
         console.error("Error fetching transactions:", err)
@@ -90,7 +101,8 @@ export function TransactionHistory() {
     }
 
     fetchTransactions()
-  }, [token])
+  // 4. Добавляем refreshIndex в зависимости
+  }, [token, refreshIndex])
 
   if (isLoading) {
     return (

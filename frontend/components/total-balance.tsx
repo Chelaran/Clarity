@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
-import { Wallet } from "lucide-react"
+import { Wallet, Loader2 } from "lucide-react" // Loader2 уже был, просто объединил импорт
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { Loader2 } from "lucide-react"
+import { useRefresh } from "@/components/refresh-context" // 1. Импортируем контекст
 
 interface SummaryData {
   total_balance: number
@@ -13,6 +13,10 @@ interface SummaryData {
 
 export function TotalBalance() {
   const { token } = useAuth()
+  
+  // 2. Достаем сигнал обновления
+  const { refreshIndex } = useRefresh()
+
   const [totalBalance, setTotalBalance] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -53,7 +57,9 @@ export function TotalBalance() {
     }
 
     fetchData()
-  }, [token])
+    
+  // 3. Добавляем refreshIndex в зависимости, чтобы перезагружать данные при сигнале
+  }, [token, refreshIndex])
 
   const formatNumber = (num: number): string => {
     return Math.round(num).toLocaleString("ru-RU")
@@ -94,4 +100,3 @@ export function TotalBalance() {
     </Card>
   )
 }
-

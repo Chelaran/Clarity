@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/lib/auth-context" 
+import { RefreshProvider } from "@/components/refresh-context"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -38,10 +39,12 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className={`${inter.className} font-sans antialiased`}>
+        <RefreshProvider>
         <AuthProvider>
           {children} 
         </AuthProvider>
         <Analytics />
+        </RefreshProvider>
       </body>
     </html>
   )

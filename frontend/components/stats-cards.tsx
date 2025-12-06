@@ -2,17 +2,17 @@
 
 import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
-import { TrendingUp, TrendingDown } from "lucide-react"
+import { TrendingUp, TrendingDown, Loader2 } from "lucide-react"
 import { apiUrl } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { Loader2 } from "lucide-react"
+import { useRefresh } from "@/components/refresh-context" // 1. Импортируем контекст
 
 interface SummaryData {
   month: string
   total_income: number
   total_expense: number
-  balance: number // Баланс за месяц
-  total_balance: number // Общий баланс (сумма всех транзакций)
+  balance: number
+  total_balance: number
   savings_rate: number
   essential_expense: number
   non_essential_expense: number
@@ -21,6 +21,10 @@ interface SummaryData {
 
 export function StatsCards() {
   const { token } = useAuth()
+  
+  // 2. Получаем сигнал обновления
+  const { refreshIndex } = useRefresh()
+
   const [summary, setSummary] = useState<SummaryData | null>(null)
   const [prevSummary, setPrevSummary] = useState<SummaryData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -79,9 +83,12 @@ export function StatsCards() {
     }
 
     fetchData()
-  }, [token])
+    
+  // 3. Добавляем refreshIndex в зависимости. 
+  // Теперь при добавлении операции данные перезапросятся автоматически.
+  }, [token, refreshIndex])
 
-  // Функция для расчета процента изменения
+  // Функция для расчет процента изменения
   const calculateChange = (current: number, previous: number | null): { value: number; isPositive: boolean } => {
     if (!previous || previous === 0) {
       return { value: 0, isPositive: true }
