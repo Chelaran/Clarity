@@ -28,7 +28,6 @@ export default function AnalyticsPage() {
 
             <div className="space-y-6">
               <FinancialHealth />
-              <MLForecast />
               <Anomalies />
             </div>
           </div>
