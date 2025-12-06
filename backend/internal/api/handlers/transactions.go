@@ -5,6 +5,8 @@ import (
 	"clarity/internal/models"
 	"clarity/internal/repository"
 	"clarity/internal/service"
+	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,14 +16,16 @@ import (
 )
 
 type TransactionHandler struct {
-	repo     *repository.Repository
-	mlClient *service.MLClient
+	repo            *repository.Repository
+	mlClient        *service.MLClient
+	anomalyDetector *service.AnomalyDetector
 }
 
-func NewTransactionHandler(repo *repository.Repository, mlClient *service.MLClient) *TransactionHandler {
+func NewTransactionHandler(repo *repository.Repository, mlClient *service.MLClient, anomalyDetector *service.AnomalyDetector) *TransactionHandler {
 	return &TransactionHandler{
-		repo:     repo,
-		mlClient: mlClient,
+		repo:            repo,
+		mlClient:        mlClient,
+		anomalyDetector: anomalyDetector,
 	}
 }
 
@@ -113,7 +117,64 @@ func (h *TransactionHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Детекция аномалий и создание уведомлений
+	go h.checkAndNotifyAnomalies(userID, tx)
+
 	c.JSON(http.StatusCreated, tx)
+}
+
+// checkAndNotifyAnomalies - проверка аномалий и создание уведомлений (асинхронно)
+func (h *TransactionHandler) checkAndNotifyAnomalies(userID uint, tx *models.Transaction) {
+	// 1. Проверка аномальной транзакции
+	anomaly := h.anomalyDetector.DetectTransactionAnomaly(userID, tx)
+	if anomaly.IsAnomaly {
+		severityText := map[string]string{
+			"low":    "Низкая",
+			"medium": "Средняя",
+			"high":   "Высокая",
+		}[anomaly.Severity]
+
+		notification := &models.Notification{
+			UserID:  userID,
+			Type:    "anomaly",
+			Title:   "⚠️ Аномальная транзакция обнаружена",
+			Message: fmt.Sprintf("%s. Сумма: %.2f₽, Категория: %s. %s", anomaly.Reason, tx.Amount, tx.Category, severityText),
+		}
+		h.repo.CreateNotification(notification)
+	}
+
+	// 2. Проверка лимита по категории (только для расходов)
+	if tx.Type == "expense" && tx.Category != "" {
+		month := tx.Date.Format("2006-01")
+		exceeded, current, limit := h.anomalyDetector.CheckCategoryLimit(userID, tx.Category, math.Abs(tx.Amount), month)
+		if exceeded {
+			notification := &models.Notification{
+				UserID:  userID,
+				Type:    "category_limit",
+				Title:   "📊 Превышен лимит по категории",
+				Message: fmt.Sprintf("Категория '%s': потрачено %.2f₽ из лимита %.2f₽ (%.0f%%)", tx.Category, current, limit, (current/limit)*100),
+			}
+			h.repo.CreateNotification(notification)
+		}
+	}
+
+	// 3. Проверка снижения финансовой подушки
+	var currentBalance float64
+	h.repo.DB().Model(&models.Transaction{}).
+		Where("user_id = ?", userID).
+		Select("COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0)").
+		Scan(&currentBalance)
+
+	decreased, current, previous := h.anomalyDetector.CheckCushionDecrease(userID, currentBalance)
+	if decreased {
+		notification := &models.Notification{
+			UserID:  userID,
+			Type:    "cushion",
+			Title:   "💰 Снижение финансовой подушки",
+			Message: fmt.Sprintf("Ваша финансовая подушка снизилась с %.2f₽ до %.2f₽ (на %.0f%%)", previous, current, ((previous-current)/previous)*100),
+		}
+		h.repo.CreateNotification(notification)
+	}
 }
 
 func (h *TransactionHandler) List(c *gin.Context) {

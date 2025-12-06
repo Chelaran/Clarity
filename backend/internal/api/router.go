@@ -28,13 +28,15 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string, yand
 	// Protected routes
 	mlClient := service.NewMLClient(mlServiceURL)
 	forecastClient := service.NewForecastClient(mlServiceURL)
-	txHandler := handlers.NewTransactionHandler(repo, mlClient)
+	anomalyDetector := service.NewAnomalyDetector(repo.DB())
+	txHandler := handlers.NewTransactionHandler(repo, mlClient, anomalyDetector)
 	analyticsHandler := handlers.NewAnalyticsHandler(repo)
 	healthScoreHandler := handlers.NewHealthScoreHandler(repo)
 	investmentHandler := handlers.NewInvestmentHandler(repo)
 	depositHandler := handlers.NewDepositHandler(repo)
 	chatHandler := handlers.NewChatHandler(repo, yandexGPT)
 	forecastHandler := handlers.NewForecastHandler(repo, forecastClient)
+	notificationHandler := handlers.NewNotificationHandler(repo)
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware(jwtSecret))
 	{
@@ -71,6 +73,11 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string, yand
 		// Financial Analysis & Forecasting
 		protected.POST("/analyze", forecastHandler.Analyze)
 		protected.GET("/predict", forecastHandler.Predict)
+
+		// Notifications
+		protected.GET("/notifications", notificationHandler.GetNotifications)
+		protected.PATCH("/notifications/:id/read", notificationHandler.MarkAsRead)
+		protected.PATCH("/notifications/read-all", notificationHandler.MarkAllAsRead)
 	}
 
 	return r

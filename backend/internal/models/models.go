@@ -78,3 +78,14 @@ type ChatMessage struct {
 	Content   string    `gorm:"type:text;not null" json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// Notification - уведомления пользователя
+type Notification struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	Type      string    `gorm:"not null" json:"type"` // "anomaly", "limit", "cushion", "category_limit"
+	Title     string    `gorm:"not null" json:"title"`
+	Message   string    `gorm:"type:text;not null" json:"message"`
+	IsRead    bool      `gorm:"default:false" json:"is_read"`
+	CreatedAt time.Time `json:"created_at"`
+}

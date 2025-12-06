@@ -20,7 +20,7 @@ func NewDB(dsn string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return db, db.AutoMigrate(&models.User{}, &models.Transaction{}, &models.Investment{}, &models.Deposit{}, &models.ChatMessage{})
+	return db, db.AutoMigrate(&models.User{}, &models.Transaction{}, &models.Investment{}, &models.Deposit{}, &models.ChatMessage{}, &models.Notification{})
 }
 
 func New(db *gorm.DB) *Repository {
@@ -171,4 +171,31 @@ func (r *Repository) GetChatHistory(userID uint, limit int) ([]models.ChatMessag
 		messages[i], messages[j] = messages[j], messages[i]
 	}
 	return messages, err
+}
+
+// Notification methods
+func (r *Repository) CreateNotification(n *models.Notification) error {
+	return r.db.Create(n).Error
+}
+
+func (r *Repository) GetNotifications(userID uint, limit int, unreadOnly bool) ([]models.Notification, error) {
+	var notifications []models.Notification
+	query := r.db.Where("user_id = ?", userID)
+	if unreadOnly {
+		query = query.Where("is_read = ?", false)
+	}
+	err := query.Order("created_at desc").Limit(limit).Find(&notifications).Error
+	return notifications, err
+}
+
+func (r *Repository) MarkNotificationAsRead(userID uint, notificationID uint) error {
+	return r.db.Model(&models.Notification{}).
+		Where("id = ? AND user_id = ?", notificationID, userID).
+		Update("is_read", true).Error
+}
+
+func (r *Repository) MarkAllNotificationsAsRead(userID uint) error {
+	return r.db.Model(&models.Notification{}).
+		Where("user_id = ? AND is_read = ?", userID, false).
+		Update("is_read", true).Error
 }
