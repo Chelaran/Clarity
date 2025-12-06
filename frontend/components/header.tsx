@@ -9,6 +9,7 @@ import { AddOperationModal } from "@/components/add-operation-modal"
 import { AuthModal } from "@/components/auth-modal" // Импортируем нашу новую модалку
 import { useAuth } from "@/lib/auth-context" // Импортируем хук авторизации
 import { NotificationsDropdown } from "@/components/notifications-dropdown"
+import { Logo } from "@/components/logo"
 
 export function Header() {
   const pathname = usePathname()
@@ -44,9 +45,7 @@ export function Header() {
               </Button>
 
               <Link href="/" className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold text-lg">C</span>
-                </div>
+                <Logo className="w-8 h-8" />
                 <span className="text-xl font-semibold text-foreground hidden sm:block">Clarity</span>
               </Link>
             </div>

@@ -1,3 +1,5 @@
+"use client"
+
 import { Header } from "@/components/header"
 import { StatsCards } from "@/components/stats-cards"
 import { TransactionHistory } from "@/components/transaction-history"
@@ -7,8 +9,27 @@ import { TotalBalance } from "@/components/total-balance"
 import { SmartAdvice } from "@/components/smart-advice"
 import { QuickActions } from "@/components/quick-actions"
 import { InvestmentsDepositsSummary } from "@/components/investments-deposits-summary"
+import { AuthPage } from "@/components/auth-page"
+import { useAuth } from "@/lib/auth-context"
 
 export default function HomePage() {
+  const { user, isLoading } = useAuth()
+
+  // Показываем форму авторизации для неавторизованных пользователей
+  if (!isLoading && !user) {
+    return <AuthPage />
+  }
+
+  // Показываем загрузку
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  // Показываем основной контент для авторизованных
   return (
     <div className="min-h-screen bg-background">
       <Header />
