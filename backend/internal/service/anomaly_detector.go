@@ -149,19 +149,46 @@ func (a *AnomalyDetector) CheckCategoryLimit(userID uint, category string, amoun
 	// Получаем средний месячный расход по категории за последние 3 месяца
 	var totalExpense3Months float64
 	threeMonthsAgo := monthTime.AddDate(0, -3, 0).Format("2006-01-02")
-	a.db.Model(&models.Transaction{}).
-		Where("user_id = ? AND type = 'expense' AND category = ? AND date >= ? AND date <= ?", userID, category, threeMonthsAgo, endDate).
-		Select("COALESCE(SUM(ABS(amount)), 0)").
-		Scan(&totalExpense3Months)
+	
+	// Получаем все транзакции за последние 3 месяца для подсчета по месяцам
+	var transactions []models.Transaction
+	a.db.Where("user_id = ? AND type = 'expense' AND category = ? AND date >= ? AND date <= ?", userID, category, threeMonthsAgo, endDate).
+		Order("date asc").
+		Find(&transactions)
 
-	avgExpense := totalExpense3Months / 3.0
-	if avgExpense == 0 {
-		// Если нет истории, используем текущий месяц как базу
-		avgExpense = monthExpense
+	// Группируем по месяцам и считаем средний расход
+	monthlyExpenses := make(map[string]float64)
+	for _, tx := range transactions {
+		monthKey := tx.Date.Format("2006-01")
+		monthlyExpenses[monthKey] += math.Abs(tx.Amount)
 	}
 
-	// Если средний расход > 0, используем его как лимит
-	limit := avgExpense * 1.2 // Лимит = 120% от среднего
+	// Вычисляем средний расход
+	var avgExpense float64
+	monthCount := len(monthlyExpenses)
+	
+	if monthCount > 0 {
+		for _, expense := range monthlyExpenses {
+			totalExpense3Months += expense
+		}
+		avgExpense = totalExpense3Months / float64(monthCount)
+	} else {
+		// Если нет истории, используем текущий месяц как базу (но только если есть транзакции)
+		if monthExpense > 0 {
+			avgExpense = monthExpense
+		} else {
+			// Если нет истории вообще, не устанавливаем лимит
+			return false, 0, 0
+		}
+	}
+
+	// Устанавливаем лимит: 250% от среднего (более разумный порог)
+	// Или минимум 10000₽ для категорий с маленькими расходами
+	limit := avgExpense * 2.5
+	if limit < 10000 && avgExpense > 0 {
+		limit = 10000
+	}
+
 	if limit == 0 {
 		return false, 0, 0
 	}
