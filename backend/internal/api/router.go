@@ -59,6 +59,7 @@ func NewRouter(repo *repository.Repository, jwtSecret, mlServiceURL string, yand
 
 		protected.GET("/analytics/summary", analyticsHandler.Summary)
 		protected.GET("/analytics/trends", analyticsHandler.Trends)
+		protected.GET("/analytics/category-distribution", analyticsHandler.CategoryDistribution)
 
 		protected.GET("/health-score", healthScoreHandler.GetHealthScore)
 		protected.GET("/health-score/income-details", healthScoreHandler.GetIncomeDetails)
