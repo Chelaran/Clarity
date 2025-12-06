@@ -45,18 +45,13 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// Сохраняем сообщение пользователя
-	userMsg := &models.ChatMessage{
-		UserID:  userID,
-		Role:    "user",
-		Content: req.Message,
-	}
-	if err := h.repo.CreateChatMessage(userMsg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save message"})
-		return
-	}
+	// ВАЖНО: Получаем историю БЕЗ текущего сообщения (оно еще не сохранено)
+	// Получаем последние 20 сообщений для контекста разговора
+	history, _ := h.repo.GetChatHistory(userID, 20)
 
-	// Собираем контекст о финансах пользователя
+	// ВСЕГДА собираем СВЕЖИЙ контекст о финансах пользователя при каждом запросе
+	// Это гарантирует, что AI всегда имеет актуальные данные, даже если пользователь
+	// добавил новые транзакции между сообщениями
 	context := h.buildFinancialContext(userID)
 
 	// Если контекст пустой, добавляем базовую информацию
@@ -64,16 +59,24 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		context = "У пользователя пока нет финансовых данных. Помоги ему начать работу с системой."
 	}
 
-	// Получаем историю чата (последние 10 сообщений)
-	history, _ := h.repo.GetChatHistory(userID, 10)
-
-	// Формируем сообщения для YandexGPT
+	// Формируем сообщения для YandexGPT (с историей разговора и свежим контекстом)
 	messages := h.buildMessages(context, history, req.Message)
 
 	// Проверяем, что есть хотя бы одно валидное сообщение
-	if len(messages) == 0 || messages[0].Text == "" {
+	if len(messages) == 0 || (len(messages) > 0 && messages[0].Text == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Не удалось сформировать запрос к AI"})
 		return
+	}
+
+	// Сохраняем сообщение пользователя ДО отправки в AI
+	// Это нужно для истории, даже если AI вернет ошибку
+	userMsg := &models.ChatMessage{
+		UserID:  userID,
+		Role:    "user",
+		Content: req.Message,
+	}
+	if err := h.repo.CreateChatMessage(userMsg); err != nil {
+		// Логируем ошибку, но продолжаем (история важна, но не критична)
 	}
 
 	// Отправляем в YandexGPT
@@ -231,19 +234,35 @@ func (h *ChatHandler) buildFinancialContext(userID uint) string {
 		context.WriteString("\n")
 	}
 
-	// Последние транзакции (топ-10 для лучшего контекста)
+	// Самая дорогая транзакция по расходам (для быстрого ответа на частые вопросы)
+	var maxExpenseTx models.Transaction
+	result := db.Where("user_id = ? AND type = 'expense'", userID).
+		Order("amount desc").
+		First(&maxExpenseTx)
+	if result.Error == nil && maxExpenseTx.ID > 0 {
+		essential := ""
+		if maxExpenseTx.IsEssential {
+			essential = " [обязательное]"
+		} else {
+			essential = " [необязательное]"
+		}
+		context.WriteString(fmt.Sprintf("Самая дорогая расходная транзакция (одна конкретная транзакция): %.2f₽ | Категория: %s%s | Описание: %s | Дата: %s\n\n",
+			maxExpenseTx.Amount, maxExpenseTx.Category, essential, maxExpenseTx.Description, maxExpenseTx.Date.Format("02.01.2006")))
+	}
+
+	// Последние транзакции (топ-20 для лучшего контекста)
 	var recentTxs []models.Transaction
 	db.Where("user_id = ?", userID).
-		Order("date desc").
-		Limit(10).
+		Order("date desc, id desc").
+		Limit(20).
 		Find(&recentTxs)
 
 	if len(recentTxs) > 0 {
-		context.WriteString("Последние транзакции:\n")
+		context.WriteString("Последние транзакции (от новых к старым):\n")
 		for _, tx := range recentTxs {
-			sign := ""
+			txType := "ДОХОД"
 			if tx.Type == "expense" {
-				sign = "-"
+				txType = "РАСХОД"
 			}
 			essential := ""
 			if tx.Type == "expense" && tx.IsEssential {
@@ -251,8 +270,9 @@ func (h *ChatHandler) buildFinancialContext(userID uint) string {
 			} else if tx.Type == "expense" {
 				essential = " [необязательное]"
 			}
-			context.WriteString(fmt.Sprintf("- %s: %s%.2f₽ (%s%s) - %s\n",
-				tx.Date.Format("02.01.2006"), sign, tx.Amount, tx.Category, essential, tx.Description))
+			// Четко разделяем доходы и расходы для AI
+			context.WriteString(fmt.Sprintf("- [%s] %s: %.2f₽ | Категория: %s%s | Описание: %s\n",
+				txType, tx.Date.Format("02.01.2006"), tx.Amount, tx.Category, essential, tx.Description))
 		}
 		context.WriteString("\n")
 	}
@@ -290,43 +310,81 @@ func (h *ChatHandler) buildFinancialContext(userID uint) string {
 func (h *ChatHandler) buildMessages(context string, history []models.ChatMessage, currentMessage string) []service.YandexGPTMessage {
 	var messages []service.YandexGPTMessage
 
-	// Улучшенный промпт с инструкциями для анализа
-	prompt := `Ты финансовый ассистент Clarity. Твоя задача - анализировать конкретные финансовые данные и давать точные рекомендации.
+	// Базовый системный промпт (без контекста данных)
+	systemPrompt := `Ты финансовый ассистент Clarity. Твоя задача - анализировать конкретные финансовые данные и давать точные рекомендации.
 
 ВАЖНО - ОГРАНИЧЕНИЯ:
 - Ты МОЖЕШЬ отвечать ТОЛЬКО на вопросы, связанные с финансами, бюджетом, транзакциями, накоплениями, инвестициями, вкладами, финансовым здоровьем
 - Если вопрос НЕ связан с финансами (игры, погода, общие вопросы и т.д.) - вежливо откажись и напомни, что ты финансовый помощник
-- Пример: "Извините, я финансовый помощник Clarity и могу помочь только с вопросами о ваших финансах, бюджете, накоплениях и инвестициях."
+
+КРИТИЧЕСКИ ВАЖНО - СТРУКТУРА ДАННЫХ:
+- Транзакции разделены на ДОХОДЫ [ДОХОД] и РАСХОДЫ [РАСХОД]
+- В транзакциях суммы всегда положительные числа (для расходов не нужно искать отрицательные значения)
+- Когда спрашивают про "самую дорогую покупку" или "самую дорогую транзакцию по расходам" - ищи ТОЛЬКО транзакции с типом [РАСХОД], не путай с доходами
+- Когда спрашивают про "транзакции" без уточнения - показывай ВСЕ транзакции (и доходы, и расходы), четко разделяя их
+- Суммы в транзакциях - это абсолютные значения, для расходов они уже указаны как положительные числа
 
 ПРАВИЛА:
 1. НЕ упоминай данные, если пользователь их не спрашивает напрямую
 2. При приветствии просто поздоровайся кратко, не выдавай данные
 3. При анализе используй КОНКРЕТНЫЕ ЦИФРЫ из данных, не общие фразы
 4. Анализируй категории расходов - сравнивай суммы, проценты, количество транзакций
-5. При вопросах о тратах анализируй категории и давай конкретные советы: "стоит меньше тратить на [категория], там вы потратили [сумма]"
+5. При вопросах о тратах анализируй категории и давай конкретные советы
 6. Сравнивай текущий месяц с предыдущим, если есть данные
 7. Используй разбивку по категориям для конкретных рекомендаций
 8. При составлении планов - давай структурированный план с конкретными шагами и цифрами
 9. Для планов накоплений - рассчитывай конкретные суммы в месяц, учитывая текущие доходы и расходы
 10. Отвечай кратко, без "воды" и общих фраз
+11. Помни контекст предыдущих сообщений в разговоре
+12. ВСЕГДА проверяй тип транзакции ([ДОХОД] или [РАСХОД]) перед ответом на вопросы о транзакциях
 
 ФОРМАТ ПЛАНОВ:
 Если просят план или анализ с планом, используй структуру:
 1. Анализ текущей ситуации (конкретные цифры)
 2. Проблемы (что мешает достижению цели)
 3. План действий (конкретные шаги с суммами)
-4. Ожидаемый результат
+4. Ожидаемый результат`
 
-Финансовые данные пользователя (используй только если спрашивают):
-` + context + `
+	// Если нет истории - это первый запрос, добавляем полный промпт с контекстом
+	if len(history) == 0 {
+		fullPrompt := systemPrompt + "\n\nАктуальные финансовые данные пользователя:\n" + context + "\n\nВопрос пользователя: " + currentMessage + "\n\nСначала проверь, связан ли вопрос с финансами. Если НЕТ - вежливо откажись. Если ДА - проанализируй вопрос используя актуальные данные выше."
+		messages = append(messages, service.YandexGPTMessage{
+			Role: "user",
+			Text: fullPrompt,
+		})
+		return messages
+	}
 
-Вопрос пользователя: ` + currentMessage + `
+	// Если есть история - добавляем историю разговора
+	// Ограничиваем историю последними 10 сообщениями для экономии токенов
+	historyLimit := 10
+	if len(history) > historyLimit {
+		history = history[len(history)-historyLimit:]
+	}
 
-Сначала проверь, связан ли вопрос с финансами. Если НЕТ - вежливо откажись. Если ДА - проанализируй вопрос. Если нужны данные - используй конкретные цифры, категории, сравнения. Если просят план - дай структурированный план с шагами и цифрами.`
+	// Добавляем историю разговора (user и assistant сообщения)
+	for _, msg := range history {
+		if msg.Role == "user" || msg.Role == "assistant" {
+			messages = append(messages, service.YandexGPTMessage{
+				Role: msg.Role,
+				Text: msg.Content,
+			})
+		}
+	}
 
+	// ВАЖНО: Добавляем актуальный контекст перед текущим сообщением
+	// Это гарантирует, что AI всегда имеет свежие данные, даже если пользователь
+	// добавил новые транзакции между сообщениями
+	contextMessage := "Актуальные финансовые данные (обновлены только что):\n" + context + "\n\nИспользуй эти данные для ответа на следующий вопрос."
 	messages = append(messages, service.YandexGPTMessage{
 		Role: "user",
-		Text: prompt,
+		Text: contextMessage,
+	})
+
+	// Добавляем текущее сообщение пользователя
+	messages = append(messages, service.YandexGPTMessage{
+		Role: "user",
+		Text: currentMessage,
 	})
 
 	return messages
