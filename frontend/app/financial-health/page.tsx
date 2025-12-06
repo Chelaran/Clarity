@@ -22,7 +22,6 @@ export default function FinancialHealthPage() {
               <p className="text-muted-foreground">Комплексная оценка вашего состояния</p>
             </div>
           </div>
-          <p className="text-sm text-muted-foreground">Обновлено: Сегодня, 09:00</p>
         </div>
 
         {/* Main Content */}
