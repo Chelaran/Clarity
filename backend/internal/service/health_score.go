@@ -699,10 +699,11 @@ type InvestmentDetailsResponse struct {
 }
 
 type DepositDetailsResponse struct {
-	TotalAmount    float64            `json:"total_amount"`
-	TotalInterest  float64            `json:"total_interest"` // Общий процентный доход
-	Recommendation string             `json:"recommendation"`
-	Breakdown      []DepositBreakdown `json:"breakdown"`
+	TotalAmount     float64            `json:"total_amount"`
+	TotalInterest   float64            `json:"total_interest"` // Общий процентный доход
+	ActiveDeposits  int                `json:"active_deposits"` // Количество активных вкладов
+	Recommendation  string             `json:"recommendation"`
+	Breakdown       []DepositBreakdown `json:"breakdown"`
 }
 
 type InvestmentBreakdown struct {
@@ -1150,6 +1151,8 @@ func (s *HealthScoreService) GetDepositDetails(userID uint) (*DepositDetailsResp
 		Order("amount desc").
 		Find(&depositStats)
 
+	activeDepositsCount := len(depositStats)
+
 	breakdown := []DepositBreakdown{}
 	for _, deposit := range depositStats {
 		percent := 0.0
@@ -1181,6 +1184,7 @@ func (s *HealthScoreService) GetDepositDetails(userID uint) (*DepositDetailsResp
 	return &DepositDetailsResponse{
 		TotalAmount:    math.Round(totalAmount*100) / 100,
 		TotalInterest:  math.Round(totalInterest*100) / 100,
+		ActiveDeposits: activeDepositsCount,
 		Recommendation: recommendation,
 		Breakdown:      breakdown,
 	}, nil
