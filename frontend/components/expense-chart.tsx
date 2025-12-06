@@ -162,9 +162,9 @@ export function ExpenseChart() {
         <h2 className="text-lg font-semibold text-foreground">Структура расходов</h2>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center gap-8">
+      <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6">
         {/* График (Donut Chart) */}
-        <div className="relative w-64 h-64 shrink-0">
+        <div className="relative w-56 h-56 lg:w-64 lg:h-64 shrink-0">
           <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90">
             {chartData.map((expense, index) => {
               // Считаем сумму процентов ДО текущего элемента, чтобы повернуть сегмент
@@ -212,24 +212,28 @@ export function ExpenseChart() {
           </div>
         </div>
 
-        {/* Легенда (Список справа) */}
-        <div className="flex-1 space-y-3 w-full max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
+        {/* Легенда (Список справа или снизу) */}
+        <div className="flex-1 w-full lg:max-w-none space-y-2.5 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
           {chartData.map((expense) => (
-            <div key={expense.originalKey} className="flex items-center justify-between group">
-              <div className="flex items-center gap-3">
+            <div key={expense.originalKey} className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <div 
                   className="w-3 h-3 rounded-full shrink-0" 
                   style={{ backgroundColor: expense.color }} 
                 />
-                <span className="text-sm text-foreground truncate max-w-[120px]" title={expense.name}>
+                <span 
+                  className="text-sm text-foreground truncate" 
+                  title={expense.name}
+                  style={{ maxWidth: '140px' }}
+                >
                   {expense.name}
                 </span>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 shrink-0">
                 <span className="text-sm font-medium text-foreground whitespace-nowrap">
                   {Math.round(expense.amount).toLocaleString("ru-RU")} ₽
                 </span>
-                <span className="text-sm text-muted-foreground w-10 text-right">
+                <span className="text-sm text-muted-foreground w-12 text-right whitespace-nowrap">
                   {expense.percentage.toFixed(1)}%
                 </span>
               </div>
