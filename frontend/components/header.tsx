@@ -8,6 +8,7 @@ import { useState } from "react"
 import { AddOperationModal } from "@/components/add-operation-modal"
 import { AuthModal } from "@/components/auth-modal" // Импортируем нашу новую модалку
 import { useAuth } from "@/lib/auth-context" // Импортируем хук авторизации
+import { NotificationsDropdown } from "@/components/notifications-dropdown"
 
 export function Header() {
   const pathname = usePathname()
@@ -74,10 +75,7 @@ export function Header() {
                   <Button variant="ghost" size="icon" className="text-muted-foreground">
                     <Search className="w-5 h-5" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground relative">
-                    <Bell className="w-5 h-5" />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
-                  </Button>
+                  <NotificationsDropdown />
                 </>
               )}
 
