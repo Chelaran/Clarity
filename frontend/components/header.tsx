@@ -71,9 +71,9 @@ export function Header() {
               {/* Показываем поиск и уведомления только авторизованным */}
               {user && (
                 <>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground">
+                  {/*<Button variant="ghost" size="icon" className="text-muted-foreground">
                     <Search className="w-5 h-5" />
-                  </Button>
+                  </Button>*/}
                   <NotificationsDropdown />
                 </>
               )}

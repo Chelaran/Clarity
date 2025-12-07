@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
-import { Wallet, CreditCard, PiggyBank, TrendingUp, Building2, Loader2, Info, Target, PieChart, ArrowUpRight, CheckCircle2 } from "lucide-react"
+import { Wallet, CreditCard, PiggyBank, TrendingUp, Building2, Loader2, Info, Target, PieChart, ArrowUpRight } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { apiUrl } from "@/lib/api"
 import { useRefresh } from "@/components/refresh-context"
@@ -22,7 +22,7 @@ interface CategoryItem {
   rawData?: any 
 }
 
-// --- КОМПОНЕНТЫ ВИЗУАЛИЗАЦИИ (Без изменений) ---
+// --- КОМПОНЕНТЫ ВИЗУАЛИЗАЦИИ (Графики) ---
 const DonutChart = ({ data }: { data: { name: string, percent: number, color: string }[] }) => {
   const radius = 70
   const circumference = 2 * Math.PI * radius
@@ -119,75 +119,57 @@ function CategoryModal({ isOpen, onClose, category }: { isOpen: boolean; onClose
 
   const renderContent = () => {
     switch (category.id) {
-      // 1. ДОХОДЫ
-      case 1:
-        // Используем данные, которые мы вручную рассчитали в useEffect
-        const savingsRate = rawData.savings_rate || 0
-        const savedAmount = rawData.savings_amount || 0
-        const incomeAmount = rawData.total_income || 0
-
+      case 1: // ДОХОДЫ
         return (
           <div className="grid gap-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
                 <div className="text-sm text-blue-600 mb-1">Всего заработано</div>
                 <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                  {Math.round(incomeAmount).toLocaleString()} ₽
+                  {Math.round(rawData.total_income).toLocaleString()} ₽
                 </div>
               </div>
               <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl">
                 <div className="text-sm text-emerald-600 mb-1">Отложено</div>
                 <div className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
-                  {Math.round(savedAmount).toLocaleString()} ₽
+                  {Math.round(rawData.savings_amount).toLocaleString()} ₽
                 </div>
               </div>
             </div>
-
             <div className="p-6 border rounded-2xl bg-card">
               <h4 className="font-medium mb-4 flex items-center gap-2">
-                <Target className="w-4 h-4" /> Норма сбережений: {savingsRate.toFixed(1)}%
+                <Target className="w-4 h-4" /> Норма сбережений: {rawData.savings_rate.toFixed(1)}%
               </h4>
               <div className="h-6 w-full bg-muted rounded-full overflow-hidden flex relative">
                 <div 
-                  className="h-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white transition-all duration-1000" 
-                  style={{ width: `${Math.min(Math.max(savingsRate, 0), 100)}%` }}
+                  className="h-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white" 
+                  style={{ width: `${Math.min(Math.max(rawData.savings_rate, 0), 100)}%` }}
                 >
-                  {savingsRate > 5 && `${savingsRate.toFixed(0)}%`}
+                  {rawData.savings_rate > 5 && `${rawData.savings_rate.toFixed(0)}%`}
                 </div>
                 <div className="absolute top-0 bottom-0 w-0.5 bg-black/20 left-[20%]" title="Цель 20%" />
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                <span>0%</span>
-                <span className="font-medium text-foreground">Цель: 20%</span>
-                <span>100%</span>
               </div>
             </div>
           </div>
         )
 
-      // 2. РАСХОДЫ
-      case 2:
-        const essential = rawData.essential_expense || 0
-        const nonEssential = rawData.non_essential_expense || 0
-        const totalExp = rawData.total_expense || 1
-        
+      case 2: // РАСХОДЫ
         return (
           <div className="grid gap-6">
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="p-3 bg-muted rounded-lg">
                 <div className="text-xs text-muted-foreground">Всего</div>
-                <div className="font-bold">{Math.round(totalExp).toLocaleString()}</div>
+                <div className="font-bold">{Math.round(rawData.total_expense).toLocaleString()}</div>
               </div>
               <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
                 <div className="text-xs text-red-600">Обязательные</div>
-                <div className="font-bold text-red-900 dark:text-red-100">{Math.round(essential).toLocaleString()}</div>
+                <div className="font-bold text-red-900 dark:text-red-100">{Math.round(rawData.essential_expense || 0).toLocaleString()}</div>
               </div>
               <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
                 <div className="text-xs text-purple-600">Хотелки</div>
-                <div className="font-bold text-purple-900 dark:text-purple-100">{Math.round(nonEssential).toLocaleString()}</div>
+                <div className="font-bold text-purple-900 dark:text-purple-100">{Math.round(rawData.non_essential_expense || 0).toLocaleString()}</div>
               </div>
             </div>
-
             <div className="border rounded-2xl p-6 flex flex-col items-center">
               <h4 className="font-medium mb-4 w-full text-left">Распределение трат</h4>
               {loadingChart ? <Loader2 className="animate-spin" /> : <DonutChart data={expenseChart} />}
@@ -195,35 +177,30 @@ function CategoryModal({ isOpen, onClose, category }: { isOpen: boolean; onClose
           </div>
         )
 
-      // 3. НАКОПЛЕНИЯ
-      case 3:
-        const months = rawData.emergency_fund_months || 0
-        const target = rawData.target_amount || 0
+      case 3: // НАКОПЛЕНИЯ
         return (
           <div className="grid gap-6">
             <div className="flex flex-col items-center p-6 bg-orange-50 dark:bg-orange-900/10 rounded-2xl border border-orange-100 dark:border-orange-900/30">
               <h4 className="text-orange-800 dark:text-orange-200 font-medium mb-4">Финансовая подушка</h4>
-              <GaugeChart value={months} max={6} />
+              <GaugeChart value={rawData.emergency_fund_months || 0} max={6} />
               <p className="text-sm text-center mt-4 text-orange-700 dark:text-orange-300">
-                У вас есть запас на <strong>{months.toFixed(1)} месяцев</strong>. <br/>
-                Рекомендуемая цель: <strong>6 месяцев</strong>.
+                У вас есть запас на <strong>{(rawData.emergency_fund_months || 0).toFixed(1)} мес.</strong>
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
                <div className="p-4 border rounded-xl">
-                 <div className="text-xs text-muted-foreground mb-1">Текущий баланс</div>
+                 <div className="text-xs text-muted-foreground mb-1">Баланс</div>
                  <div className="text-xl font-bold">{Math.round(rawData.total_balance || 0).toLocaleString()} ₽</div>
                </div>
                <div className="p-4 border rounded-xl">
-                 <div className="text-xs text-muted-foreground mb-1">Целевая сумма</div>
-                 <div className="text-xl font-bold">{Math.round(target).toLocaleString()} ₽</div>
+                 <div className="text-xs text-muted-foreground mb-1">Цель</div>
+                 <div className="text-xl font-bold">{Math.round(rawData.target_amount || 0).toLocaleString()} ₽</div>
                </div>
             </div>
           </div>
         )
 
-      // 4. ИНВЕСТИЦИИ
-      case 4:
+      case 4: // ИНВЕСТИЦИИ
         const profit = rawData.profit || 0
         const isProfitable = profit >= 0
         return (
@@ -253,8 +230,7 @@ function CategoryModal({ isOpen, onClose, category }: { isOpen: boolean; onClose
           </div>
         )
 
-      // 5. ВКЛАДЫ
-      case 5:
+      case 5: // ВКЛАДЫ
         return (
           <div className="grid gap-6">
              <div className="p-6 bg-blue-600 text-white rounded-2xl shadow-lg">
@@ -269,10 +245,6 @@ function CategoryModal({ isOpen, onClose, category }: { isOpen: boolean; onClose
                    <div>
                       <span className="text-xs text-blue-200 block">Тело вкладов</span>
                       <span className="font-mono font-medium">{Math.round(rawData.total_amount || 0).toLocaleString()} ₽</span>
-                   </div>
-                   <div>
-                      <span className="text-xs text-blue-200 block">Количество</span>
-                      <span className="font-mono font-medium">{rawData.active_deposits || 0} шт.</span>
                    </div>
                 </div>
              </div>
@@ -375,32 +347,30 @@ export function HealthCategories() {
         const invest = investRes.ok ? await investRes.json() : {}
         const deposits = depositsRes.ok ? await depositsRes.json() : {}
 
-        // --- ВАЖНОЕ ИСПРАВЛЕНИЕ ---
-        // Определяем реальные цифры дохода и расхода
+        // --- ПРАВКА ДЛЯ ДОХОДОВ/РАСХОДОВ ---
         const realIncome = summary.total_income || extractAmount(income.recommendation)
         const realExpense = summary.total_expense || extractAmount(expense.recommendation)
         
-        // Вычисляем отложенное (savings)
-        // Если API не вернул savings_amount (вернул 0), считаем: Доход - Расход
         const realSavings = income.savings_amount || (realIncome - Math.abs(realExpense))
-        
-        // Вычисляем норму сбережений (%)
-        // Если API не вернул savings_rate, считаем: (Отложено / Доход) * 100
         const realSavingsRate = income.savings_rate || (realIncome > 0 ? (realSavings / realIncome) * 100 : 0)
 
-        // Обновляем объекты для модалки
-        // Мы создаем НОВЫЙ объект данных для Доходов, где перезаписываем нули на расчетные значения
-        const incomeRawData = {
-            ...income,
-            total_income: realIncome,
-            savings_amount: realSavings,
-            savings_rate: realSavingsRate
-        }
+        const incomeRawData = { ...income, total_income: realIncome, savings_amount: realSavings, savings_rate: realSavingsRate }
+        const expenseRawData = { ...expense, total_expense: realExpense }
+
+        // --- ПРАВКА ДЛЯ ИНВЕСТИЦИЙ ---
+        // Если API вернул 0 в полях, но есть текст "5000 р", пробуем достать
+        const realInvestCurrent = invest.total_current_value || extractAmount(invest.recommendation)
+        // Если "Вложено" 0, но "Текущая" > 0 (например, ошибка API), считаем что вложено == текущая, чтобы не пугать юзера
+        const realInvestAmount = invest.total_amount || (realInvestCurrent > 0 ? realInvestCurrent : 0)
+        const realInvestProfit = invest.profit || (realInvestCurrent - realInvestAmount)
         
-        // Для расходов тоже обновляем total_expense
-        const expenseRawData = {
-            ...expense,
-            total_expense: realExpense
+        // Исправляем объект invest
+        const investRawData = {
+            ...invest,
+            total_current_value: realInvestCurrent,
+            total_amount: realInvestAmount,
+            profit: realInvestProfit,
+            profit_percent: invest.profit_percent || 0
         }
 
         const mappedData: CategoryItem[] = [
@@ -412,7 +382,7 @@ export function HealthCategories() {
             icon: Wallet,
             color: "bg-primary",
             iconColor: "text-primary-foreground",
-            rawData: incomeRawData // <-- Передаем исправленные данные
+            rawData: incomeRawData
           },
           {
             id: 2,
@@ -422,7 +392,7 @@ export function HealthCategories() {
             icon: CreditCard,
             color: "bg-blue-500",
             iconColor: "text-white",
-            rawData: expenseRawData // <-- Передаем исправленные данные
+            rawData: expenseRawData
           },
           {
             id: 3,
@@ -438,13 +408,13 @@ export function HealthCategories() {
           {
             id: 4,
             title: "Инвестиции",
-            amount: invest.total_current_value || 0,
-            badge: invest.profit_percent ? `+${invest.profit_percent}%` : undefined,
+            amount: realInvestCurrent,
+            badge: investRawData.profit_percent ? `+${investRawData.profit_percent}%` : undefined,
             status: invest.recommendation,
             icon: TrendingUp,
             color: "bg-purple-500",
             iconColor: "text-white",
-            rawData: invest
+            rawData: investRawData // Передаем исправленные данные
           },
           {
             id: 5,
