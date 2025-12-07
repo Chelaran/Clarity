@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -231,8 +232,23 @@ func (h *TransactionHandler) ImportTransactions(c *gin.Context) {
 	// Парсим параметры
 	skipErrors := c.PostForm("skip_errors") == "true"
 
-	// Читаем CSV
-	reader := csv.NewReader(src)
+	// Читаем CSV (обрабатываем BOM если есть)
+	// CSV reader в Go не обрабатывает BOM автоматически, поэтому делаем это вручную
+	bomReader := src
+	if seeker, ok := src.(io.Seeker); ok {
+		// Проверяем первые 3 байта на BOM (UTF-8 BOM = 0xEF 0xBB 0xBF)
+		bomBytes := make([]byte, 3)
+		n, _ := src.Read(bomBytes)
+		if n == 3 && bomBytes[0] == 0xEF && bomBytes[1] == 0xBB && bomBytes[2] == 0xBF {
+			// BOM найден, файл уже на позиции после BOM
+			bomReader = src
+		} else {
+			// BOM не найден, возвращаемся к началу
+			seeker.Seek(0, io.SeekStart)
+			bomReader = src
+		}
+	}
+	reader := csv.NewReader(bomReader)
 	reader.Comma = ','
 	reader.Comment = '#'
 	reader.TrimLeadingSpace = true
@@ -280,11 +296,19 @@ func (h *TransactionHandler) ImportTransactions(c *gin.Context) {
 
 		response.Total++
 
+		// Логирование для отладки
+		log.Printf("[CSV Import] Row %d: parsing record: %v", response.Total, record)
+
 		// Парсим транзакцию
 		tx, parseErr := h.parseCSVRecord(record, headerMap, userID)
 		if parseErr != nil {
 			response.Failed++
 			errorMsg := fmt.Sprintf("Row %d: %v", response.Total, parseErr)
+			// Добавляем информацию о данных для отладки
+			if len(record) > 0 {
+				errorMsg += fmt.Sprintf(" (data: %v)", record)
+			}
+			log.Printf("[CSV Import] ERROR Row %d: %s", response.Total, errorMsg)
 			response.Errors = append(response.Errors, errorMsg)
 			if !skipErrors {
 				c.JSON(http.StatusBadRequest, gin.H{"error": errorMsg})
@@ -293,8 +317,11 @@ func (h *TransactionHandler) ImportTransactions(c *gin.Context) {
 			continue
 		}
 
-		// ML категоризация для расходов
-		if tx.Type == "expense" {
+		log.Printf("[CSV Import] Row %d: parsed successfully - Date: %s, Amount: %.2f, Type: %s, Description: %s", 
+			response.Total, tx.Date.Format("2006-01-02"), tx.Amount, tx.Type, tx.Description)
+
+		// ML категоризация для расходов (только если категория не указана в CSV)
+		if tx.Type == "expense" && (tx.Category == "" || strings.TrimSpace(tx.Category) == "") {
 			refNo := tx.RefNo
 			if refNo == "" && tx.Description != "" {
 				refNo = tx.Description
@@ -356,16 +383,42 @@ func (h *TransactionHandler) parseCSVRecord(record []string, headerMap map[strin
 		return nil, fmt.Errorf("missing or invalid date field")
 	}
 	dateStr := strings.TrimSpace(record[dateIdx])
+	log.Printf("[CSV Parse] Parsing date: '%s'", dateStr)
 	date, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
 		// Пробуем другие форматы
-		formats := []string{"2006/01/02", "02.01.2006", "02-01-2006"}
+		formats := []string{
+			"2006/01/02",      // YYYY/MM/DD
+			"02.01.2006",      // DD.MM.YYYY
+			"02-01-2006",      // DD-MM-YYYY
+			"01-02-2006",      // MM-DD-YYYY
+			"01-02-06",        // MM-DD-YY (12-07-25 = 12-07-2025)
+			"2006-01-02T15:04:05Z", // ISO format
+		}
 		parsed := false
 		for _, format := range formats {
+			log.Printf("[CSV Parse] Trying date format: '%s' for '%s'", format, dateStr)
 			if d, e := time.Parse(format, dateStr); e == nil {
 				date = d
 				parsed = true
+				// Если год был в формате YY (две цифры), нужно определить век
+				if format == "01-02-06" {
+					// Go парсит YY как год в диапазоне 0-99, нужно добавить век
+					// Если год <= текущий год % 100, считаем 20XX, иначе 19XX
+					currentYear := time.Now().Year()
+					parsedYear := date.Year()
+					if parsedYear <= currentYear%100 {
+						// Год в текущем веке (например, 25 -> 2025)
+						date = date.AddDate(2000, 0, 0)
+					} else {
+						// Год в прошлом веке (например, 99 -> 1999)
+						date = date.AddDate(1900, 0, 0)
+					}
+				}
+				log.Printf("[CSV Parse] Date parsed successfully: %s", date.Format("2006-01-02"))
 				break
+			} else {
+				log.Printf("[CSV Parse] Date format '%s' failed: %v", format, e)
 			}
 		}
 		if !parsed {
@@ -380,13 +433,52 @@ func (h *TransactionHandler) parseCSVRecord(record []string, headerMap map[strin
 		return nil, fmt.Errorf("missing or invalid amount field")
 	}
 	amountStr := strings.TrimSpace(record[amountIdx])
-	// Убираем пробелы и запятые (для формата "1 000,50" или "1,000.50")
+	log.Printf("[CSV Parse] Parsing amount: '%s'", amountStr)
+	// Убираем пробелы
 	amountStr = strings.ReplaceAll(amountStr, " ", "")
-	amountStr = strings.ReplaceAll(amountStr, ",", ".")
+	
+	// Определяем, какая запятая используется как разделитель тысяч, а какая как десятичный
+	hasComma := strings.Contains(amountStr, ",")
+	hasDot := strings.Contains(amountStr, ".")
+	
+	originalAmountStr := amountStr
+	if hasComma && hasDot {
+		// Оба разделителя: запятая = тысячи, точка = десятичные (1,234.56)
+		amountStr = strings.ReplaceAll(amountStr, ",", "")
+		log.Printf("[CSV Parse] Amount has both comma and dot, removing comma: '%s'", amountStr)
+	} else if hasComma {
+		// Только запятая: может быть тысячи (1,234) или десятичные (123,45 или -00300,00)
+		// Если после запятой 2-3 цифры - это десятичные
+		commaIdx := strings.LastIndex(amountStr, ",")
+		if commaIdx != -1 && len(amountStr)-commaIdx-1 <= 3 {
+			// Десятичный разделитель - заменяем на точку
+			amountStr = strings.ReplaceAll(amountStr, ",", ".")
+			log.Printf("[CSV Parse] Amount comma is decimal separator, replacing with dot: '%s'", amountStr)
+		} else {
+			// Разделитель тысяч - убираем
+			amountStr = strings.ReplaceAll(amountStr, ",", "")
+			log.Printf("[CSV Parse] Amount comma is thousands separator, removing: '%s'", amountStr)
+		}
+	} else if hasDot {
+		// Только точка: может быть тысячи (1.234) или десятичные (123.45)
+		// Если после точки больше 3 цифр - это разделитель тысяч
+		dotIdx := strings.LastIndex(amountStr, ".")
+		if dotIdx != -1 && len(amountStr)-dotIdx-1 > 3 {
+			// Разделитель тысяч - убираем
+			amountStr = strings.ReplaceAll(amountStr, ".", "")
+			log.Printf("[CSV Parse] Amount dot is thousands separator, removing: '%s'", amountStr)
+		} else {
+			log.Printf("[CSV Parse] Amount dot is decimal separator, keeping: '%s'", amountStr)
+		}
+		// Иначе точка уже правильный десятичный разделитель
+	}
+	
 	amount, err := strconv.ParseFloat(amountStr, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid amount: %s", amountStr)
+		log.Printf("[CSV Parse] ERROR parsing amount: original='%s', processed='%s', error=%v", originalAmountStr, amountStr, err)
+		return nil, fmt.Errorf("invalid amount: %s (parsed as: %s)", record[amountIdx], amountStr)
 	}
+	log.Printf("[CSV Parse] Amount parsed successfully: %.2f (from '%s')", amount, originalAmountStr)
 	tx.Amount = amount
 
 	// Type (обязательное)
@@ -410,7 +502,7 @@ func (h *TransactionHandler) parseCSVRecord(record []string, headerMap map[strin
 		tx.RefNo = strings.TrimSpace(record[refIdx])
 	}
 
-	// Category (опциональное, будет переопределена ML)
+	// Category (опциональное, если не указана - будет определена ML)
 	if catIdx, ok := headerMap["category"]; ok && catIdx < len(record) {
 		tx.Category = strings.TrimSpace(record[catIdx])
 	}
@@ -418,6 +510,7 @@ func (h *TransactionHandler) parseCSVRecord(record []string, headerMap map[strin
 	// IsEssential (опциональное)
 	if essIdx, ok := headerMap["is_essential"]; ok && essIdx < len(record) {
 		essStr := strings.ToLower(strings.TrimSpace(record[essIdx]))
+		// Поддерживаем различные форматы: true/false, 1/0, yes/no, да/нет, TRUE/FALSE
 		tx.IsEssential = essStr == "true" || essStr == "1" || essStr == "yes" || essStr == "да"
 	}
 
