@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { apiUrl } from "@/lib/api"
 import { useRefresh } from "@/components/refresh-context" 
+import { ReceiptQrScanner } from "@/components/qr-scanner" 
 
 interface AddOperationModalProps {
   open: boolean
@@ -233,10 +234,9 @@ export function AddOperationModal({ open, onOpenChange }: AddOperationModalProps
 
         {/* Кнопки */}
         <div className="flex gap-3 mt-2">
-          <Button variant="outline" size="sm" className="h-9 flex-1 text-xs sm:text-sm">
-            <QrCode className="w-3.5 h-3.5 mr-2" />
-            Скан QR
-          </Button>
+           {/* Передаем классы: h-9, flex-1, text-xs */}
+           <ReceiptQrScanner className="h-9 flex-1 text-xs sm:text-sm justify-center" />
+           
           <Button
             onClick={handleSubmit}
             disabled={!amount || isLoading} 
